@@ -33,14 +33,16 @@ export default function StopPage() {
       try {
         const res = await fetch("/api/status", { cache: "no-store" });
         const data = await res.json();
-        setActive(Array.isArray(data.active) ? data.active : []);
-        setNoSharedStore(data.storage ? data.storage.usingKV === false : false);
+        // Only replace the list when we actually got one — a failed or
+        // rate-limited poll (active:null) must not wipe the runners.
+        if (Array.isArray(data.active)) setActive(data.active);
+        if (data.storage) setNoSharedStore(data.storage.usingKV === false);
       } catch {
-        // network hiccup — try again next tick
+        // network hiccup — keep the last known list, try again next tick
       }
     };
     poll();
-    pollRef.current = setInterval(poll, 500);
+    pollRef.current = setInterval(poll, 1500);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -54,6 +56,7 @@ export default function StopPage() {
   const handleStop = async (id: string) => {
     setStopping(id);
     setError(null);
+    const snapshot = active; // for rollback if the stop truly fails
     setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
     try {
       const res = await fetch("/api/stop", {
@@ -62,12 +65,18 @@ export default function StopPage() {
         body: JSON.stringify({ id }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "หยุดไม่สำเร็จ");
-        return;
+      if (res.ok) {
+        setLastResult(data.result);
+      } else if (res.status === 409) {
+        // Already stopped/cancelled elsewhere — the optimistic removal was
+        // correct, so just leave it removed.
+      } else {
+        // Real failure: put the runner back so it isn't silently lost.
+        setActive(snapshot);
+        setError(data.error ?? "หยุดไม่สำเร็จ ลองใหม่อีกครั้ง");
       }
-      setLastResult(data.result);
     } catch {
+      setActive(snapshot);
       setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
     } finally {
       setStopping(null);

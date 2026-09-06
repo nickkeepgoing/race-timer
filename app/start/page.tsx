@@ -51,14 +51,16 @@ export default function StartPage() {
       try {
         const res = await fetch("/api/status", { cache: "no-store" });
         const data = await res.json();
-        setActive(Array.isArray(data.active) ? data.active : []);
-        setNoSharedStore(data.storage ? data.storage.usingKV === false : false);
+        // Only replace the list when we actually got one — a failed or
+        // rate-limited poll (active:null) must not wipe the timers.
+        if (Array.isArray(data.active)) setActive(data.active);
+        if (data.storage) setNoSharedStore(data.storage.usingKV === false);
       } catch {
-        // network hiccup — try again next tick
+        // network hiccup — keep the last known list, try again next tick
       }
     };
     poll();
-    pollRef.current = setInterval(poll, 500);
+    pollRef.current = setInterval(poll, 1500);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };

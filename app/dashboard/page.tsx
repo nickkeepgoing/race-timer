@@ -57,14 +57,15 @@ export default function DashboardPage() {
         ]);
         const rData = await rRes.json();
         const sData = await sRes.json();
-        setResults(rData.results ?? []);
-        setRunningCount(Array.isArray(sData.active) ? sData.active.length : 0);
+        // Keep the last good values on a failed/rate-limited poll.
+        if (Array.isArray(rData.results)) setResults(rData.results);
+        if (Array.isArray(sData.active)) setRunningCount(sData.active.length);
       } catch {
-        // network hiccup — try again next tick
+        // network hiccup — keep last known values, try again next tick
       }
     };
     poll();
-    pollRef.current = setInterval(poll, 1000);
+    pollRef.current = setInterval(poll, 2000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
