@@ -5,25 +5,67 @@
 html,
 body {
   height: 100%;
-  background-color: #1b1b1e;
-  color: #edeae0;
+  background-color: #111114;
+  color: #f4f1ea;
 }
 
 body {
-  background-image: repeating-linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.025) 0px,
-    rgba(255, 255, 255, 0.025) 1px,
-    transparent 1px,
-    transparent 64px
-  );
+  /* stadium: subtle spotlight glow + faint lane lines */
+  background-image:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      rgba(255, 176, 32, 0.12) 0%,
+      rgba(255, 75, 46, 0.06) 30%,
+      transparent 60%
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.022) 0px,
+      rgba(255, 255, 255, 0.022) 1px,
+      transparent 1px,
+      transparent 72px
+    );
+  background-attachment: fixed;
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .tap-target {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+/* frosted card surface */
+.card {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.02)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(6px);
+}
+
+/* thin scrollbar for the running list */
+.slim-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+/* gold shimmer for the #1 result row */
+.shimmer-gold {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 210, 76, 0.14) 45%,
+    rgba(255, 210, 76, 0.14) 55%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
 }

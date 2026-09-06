@@ -9,12 +9,17 @@ interface ActiveRun {
   startTime: number;
 }
 
+function fmt(ms: number): string {
+  return (Math.max(0, ms) / 1000).toFixed(1);
+}
+
 export default function StartPage() {
   const [name, setName] = useState("");
-  const [active, setActive] = useState<ActiveRun | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [active, setActive] = useState<ActiveRun[]>([]);
+  const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noSharedStore, setNoSharedStore] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -22,7 +27,8 @@ export default function StartPage() {
       try {
         const res = await fetch("/api/status", { cache: "no-store" });
         const data = await res.json();
-        setActive(data.active);
+        setActive(Array.isArray(data.active) ? data.active : []);
+        setNoSharedStore(data.storage ? data.storage.usingKV === false : false);
       } catch {
         // network hiccup — try again next tick
       }
@@ -35,15 +41,9 @@ export default function StartPage() {
   }, []);
 
   useEffect(() => {
-    if (!active) {
-      setElapsedMs(0);
-      return;
-    }
-    const tick = () => setElapsedMs(Date.now() - active.startTime);
-    tick();
-    const id = setInterval(tick, 100);
+    const id = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(id);
-  }, [active]);
+  }, []);
 
   const handleStart = async () => {
     setBusy(true);
@@ -57,10 +57,10 @@ export default function StartPage() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "เริ่มไม่สำเร็จ");
-        setActive(data.active ?? null);
         return;
       }
-      setActive(data.active);
+      setActive(data.active ?? []);
+      setName("");
     } catch {
       setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
     } finally {
@@ -68,64 +68,115 @@ export default function StartPage() {
     }
   };
 
-  const handleCancel = async () => {
-    setBusy(true);
+  const handleCancel = async (id: string) => {
+    setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
     try {
-      await fetch("/api/cancel", { method: "POST" });
-      setActive(null);
-    } finally {
-      setBusy(false);
+      await fetch("/api/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      // will re-sync on next poll
     }
   };
 
+  const running = active.slice().sort((a, b) => a.startTime - b.startTime);
+
   return (
-    <main className="min-h-screen flex flex-col items-center justify-between px-6 py-10">
-      <div className="w-full max-w-sm flex items-center justify-between">
-        <Link href="/" className="text-chalk text-sm underline underline-offset-4">
+    <main className="min-h-screen flex flex-col items-center px-5 py-8 gap-6">
+      <header className="w-full max-w-md flex items-center justify-between">
+        <Link
+          href="/"
+          className="tap-target text-chalk text-sm hover:text-lane transition-colors"
+        >
           ← กลับ
         </Link>
-        <span className="uppercase tracking-[0.3em] text-xs text-pistol">จุดเริ่ม</span>
+        <span className="flex items-center gap-2 uppercase tracking-[0.3em] text-xs text-pistol">
+          <span className="h-2 w-2 rounded-full bg-pistol animate-pulse" />
+          จุดเริ่ม
+        </span>
+      </header>
+
+      {noSharedStore && (
+        <div className="w-full max-w-md rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-amber text-sm">
+          ⚠️ ยังไม่ได้เชื่อมที่เก็บข้อมูลกลาง (Redis) — เครื่องจุดเริ่มกับเส้นชัยจะ
+          <b>ไม่เห็นกันและกดหยุดไม่ได้</b> ให้เชื่อม Redis บน Vercel ก่อนใช้งานจริง
+        </div>
+      )}
+
+      <div className="w-full max-w-md card rounded-2xl p-5">
+        <label className="block text-sm text-chalk mb-2">
+          ชื่อ / เลน (ไม่บังคับ)
+        </label>
+        <div className="flex gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !busy) handleStart();
+            }}
+            placeholder="เช่น เลน 3 หรือ ด.ช. สมชาย"
+            className="flex-1 min-w-0 rounded-xl bg-black/40 border border-white/10 px-4 py-3 text-lane placeholder:text-chalk/40 focus:outline-none focus:ring-2 focus:ring-pistol/70"
+          />
+        </div>
+        {error && <p className="text-pistol text-sm mt-3">{error}</p>}
+        <button
+          onClick={handleStart}
+          disabled={busy}
+          className="tap-target mt-4 w-full rounded-2xl bg-pistol text-track font-display text-2xl font-bold py-5 shadow-glow active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100"
+        >
+          {busy ? "กำลังเริ่ม…" : "▶ เริ่มจับเวลา"}
+        </button>
+        <p className="text-chalk/50 text-xs mt-3 text-center">
+          กดได้เรื่อย ๆ เพื่อเริ่มจับเวลาหลายคนพร้อมกัน
+        </p>
       </div>
 
-      <div className="w-full max-w-sm flex flex-col items-center gap-6">
-        {active ? (
-          <>
-            <p className="text-chalk text-center">กำลังจับเวลา</p>
-            <p className="font-display text-3xl text-lane text-center">{active.name}</p>
-            <p className="tabular font-display text-6xl text-pistol">
-              {(elapsedMs / 1000).toFixed(1)}s
-            </p>
-            <button
-              onClick={handleCancel}
-              disabled={busy}
-              className="tap-target text-chalk text-sm underline underline-offset-4 disabled:opacity-40"
-            >
-              ยกเลิกรอบนี้ (กดผิด)
-            </button>
-          </>
+      <section className="w-full max-w-md flex-1">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-chalk text-sm uppercase tracking-wider">
+            กำลังวิ่ง
+          </h2>
+          <span className="text-xs font-display text-pistol tabular">
+            {running.length} คน
+          </span>
+        </div>
+
+        {running.length === 0 ? (
+          <p className="text-chalk/50 text-center text-sm py-10">
+            ยังไม่มีใครออกตัว — พิมพ์ชื่อแล้วกด “เริ่มจับเวลา”
+          </p>
         ) : (
-          <>
-            <label className="w-full text-left text-sm text-chalk">
-              ชื่อ / เลน (ไม่บังคับ)
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="เช่น เลน 3 หรือ ด.ช. สมชาย"
-                className="mt-2 w-full rounded-xl bg-black/30 border border-white/10 px-4 py-3 text-lane placeholder:text-chalk/50 focus:outline-none focus:ring-2 focus:ring-pistol"
-              />
-            </label>
-            {error && <p className="text-pistol text-sm">{error}</p>}
-          </>
+          <ul className="flex flex-col gap-2.5 slim-scroll max-h-[46vh] overflow-y-auto pr-1">
+            {running.map((r) => (
+              <li
+                key={r.id}
+                className="card animate-floatIn rounded-xl px-4 py-3 flex items-center gap-3"
+              >
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-pistol animate-pulseRing" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-pistol" />
+                </span>
+                <span className="font-display text-lg text-lane truncate">
+                  {r.name}
+                </span>
+                <span className="ml-auto tabular font-display text-2xl text-pistol">
+                  {fmt(now - r.startTime)}
+                  <span className="text-sm text-chalk/60">s</span>
+                </span>
+                <button
+                  onClick={() => handleCancel(r.id)}
+                  className="tap-target text-chalk/50 hover:text-pistol text-xs px-2 py-1 transition-colors"
+                  aria-label={`ยกเลิก ${r.name}`}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-
-      <button
-        onClick={handleStart}
-        disabled={busy || !!active}
-        className="tap-target w-full max-w-sm aspect-square max-h-64 rounded-full bg-pistol text-track font-display text-3xl font-semibold shadow-2xl shadow-pistol/30 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100"
-      >
-        {active ? "กำลังวิ่ง…" : "เริ่ม"}
-      </button>
+      </section>
     </main>
   );
 }
