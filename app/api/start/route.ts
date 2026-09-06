@@ -3,14 +3,25 @@ import { addActives, getActives } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
+// Accept a device-supplied timestamp only if it is sane (a finite number
+// within a minute of the server clock). Otherwise fall back to the server's
+// own clock. This lets calibrated devices remove network latency from the
+// measurement while rejecting garbage / badly-skewed clients.
+function sanitizeTs(v: unknown, fallback: number): number {
+  if (typeof v === "number" && Number.isFinite(v) && Math.abs(v - fallback) <= 60000) {
+    return Math.round(v);
+  }
+  return fallback;
+}
+
 export async function POST(req: NextRequest) {
-  // Single server-clock timestamp shared by everyone in this batch, so a
-  // mass ("gun") start gives every runner the exact same start time.
-  const startTime = Date.now();
+  const serverNow = Date.now();
   const body = await req.json().catch(() => ({}));
 
-  // Accept either { names: string[] } (mass start) or { name: string }
-  // (single runner) for backwards compatibility.
+  // Single shared timestamp for the whole batch → a true mass ("gun") start.
+  const startTime = sanitizeTs(body.startTime, serverNow);
+
+  // Accept either { names: string[] } (mass start) or { name: string }.
   const raw: unknown[] = Array.isArray(body.names)
     ? body.names
     : typeof body.name === "string"

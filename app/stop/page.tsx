@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useServerClock } from "@/lib/clock";
 
 interface ActiveRun {
   id: string;
@@ -27,6 +28,7 @@ export default function StopPage() {
   const [error, setError] = useState<string | null>(null);
   const [noSharedStore, setNoSharedStore] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { serverNow, accuracyMs } = useServerClock();
 
   useEffect(() => {
     const poll = async () => {
@@ -49,11 +51,15 @@ export default function StopPage() {
   }, []);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 100);
+    const id = setInterval(() => setNow(serverNow()), 100);
     return () => clearInterval(id);
-  }, []);
+  }, [serverNow]);
 
   const handleStop = async (id: string) => {
+    // Capture the exact tap moment first, before any async work, so the
+    // finish time reflects when the finger hit the button — not when the
+    // request reached the server.
+    const stopTime = serverNow();
     setStopping(id);
     setError(null);
     const snapshot = active; // for rollback if the stop truly fails
@@ -62,7 +68,7 @@ export default function StopPage() {
       const res = await fetch("/api/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, stopTime }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -94,10 +100,17 @@ export default function StopPage() {
         >
           ← กลับ
         </Link>
-        <span className="flex items-center gap-2 uppercase tracking-[0.3em] text-xs text-finish">
-          <span className="h-2 w-2 rounded-full bg-finish animate-pulse" />
-          เส้นชัย
-        </span>
+        <div className="flex flex-col items-end">
+          <span className="flex items-center gap-2 uppercase tracking-[0.3em] text-xs text-finish">
+            <span className="h-2 w-2 rounded-full bg-finish animate-pulse" />
+            เส้นชัย
+          </span>
+          {accuracyMs !== null && (
+            <span className="text-[10px] text-chalk/50 tabular mt-0.5">
+              ซิงก์เวลา ±{accuracyMs}ms
+            </span>
+          )}
+        </div>
       </header>
 
       {noSharedStore && (

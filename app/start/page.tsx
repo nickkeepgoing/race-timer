@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useServerClock } from "@/lib/clock";
 
 interface ActiveRun {
   id: string;
@@ -26,6 +27,7 @@ export default function StartPage() {
   const [flash, setFlash] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { serverNow, accuracyMs } = useServerClock();
 
   // Load the saved roster once on mount.
   useEffect(() => {
@@ -67,9 +69,9 @@ export default function StartPage() {
   }, []);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 100);
+    const id = setInterval(() => setNow(serverNow()), 100);
     return () => clearInterval(id);
-  }, []);
+  }, [serverNow]);
 
   const addToRoster = (name: string) => {
     const n = name.trim();
@@ -100,11 +102,14 @@ export default function StartPage() {
     if (roster.length === 0 || busy) return;
     setBusy(true);
     setError(null);
+    // Capture the exact tap moment on the server timeline, so network
+    // latency of this request doesn't get added to everyone's time.
+    const startTime = serverNow();
     try {
       const res = await fetch("/api/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names: roster }),
+        body: JSON.stringify({ names: roster, startTime }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -146,10 +151,17 @@ export default function StartPage() {
         >
           ← กลับ
         </Link>
-        <span className="flex items-center gap-2 uppercase tracking-[0.3em] text-xs text-pistol">
-          <span className="h-2 w-2 rounded-full bg-pistol animate-pulse" />
-          จุดเริ่ม
-        </span>
+        <div className="flex flex-col items-end">
+          <span className="flex items-center gap-2 uppercase tracking-[0.3em] text-xs text-pistol">
+            <span className="h-2 w-2 rounded-full bg-pistol animate-pulse" />
+            จุดเริ่ม
+          </span>
+          {accuracyMs !== null && (
+            <span className="text-[10px] text-chalk/50 tabular mt-0.5">
+              ซิงก์เวลา ±{accuracyMs}ms
+            </span>
+          )}
+        </div>
       </header>
 
       {noSharedStore && (
