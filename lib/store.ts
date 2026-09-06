@@ -14,10 +14,13 @@ export interface ResultRun {
   durationMs: number;
 }
 
-const ACTIVE_KEY = "race-timer:active";
-const RESULTS_KEY = "race-timer:results";
+// v2 keys: the original code stored these as plain JSON strings via kv.set.
+// We now use a Redis hash (active) and list (results) for atomic writes, and
+// hash/list ops on a string key throw WRONGTYPE — so we use fresh key names.
+// (Any old data under the v1 keys was test data and is simply abandoned.)
+const ACTIVE_KEY = "race-timer:active:v2";
+const RESULTS_KEY = "race-timer:results:v2";
 const MAX_RESULTS = 500;
-const MAX_ACTIVE = 100;
 
 // The @vercel/kv client talks to Upstash over its REST API, so it needs a
 // REST url + token. Different Vercel integrations expose these under
@@ -43,21 +46,23 @@ const kv: VercelKV | null =
     ? createClient({ url: REST_URL, token: REST_TOKEN })
     : null;
 
-let memActive: ActiveRun[] = [];
+// In-memory dev fallback. Active runs are keyed by id (mirrors the Redis
+// hash); results are newest-first (mirrors the Redis list).
+const memActive = new Map<string, ActiveRun>();
 let memResults: ResultRun[] = [];
 
-export async function getActives(): Promise<ActiveRun[]> {
-  if (kv) return (await kv.get<ActiveRun[]>(ACTIVE_KEY)) ?? [];
-  return memActive;
-}
+// ── Active runs ──────────────────────────────────────────────────────────
+// Stored as a Redis HASH (field = run id, value = run). Add and remove act
+// on a single field, so concurrent starts/stops/cancels can't clobber each
+// other's writes — the lost-update bug that made started runners sometimes
+// never appear on the finish device.
 
-async function setActives(runs: ActiveRun[]): Promise<void> {
+export async function getActives(): Promise<ActiveRun[]> {
   if (kv) {
-    if (runs.length) await kv.set(ACTIVE_KEY, runs);
-    else await kv.del(ACTIVE_KEY);
-    return;
+    const all = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
+    return all ? Object.values(all) : [];
   }
-  memActive = runs;
+  return [...memActive.values()];
 }
 
 export async function addActive(run: ActiveRun): Promise<ActiveRun[]> {
@@ -65,35 +70,54 @@ export async function addActive(run: ActiveRun): Promise<ActiveRun[]> {
 }
 
 export async function addActives(runs: ActiveRun[]): Promise<ActiveRun[]> {
-  const current = await getActives();
-  // Cap the number of concurrent runs to avoid runaway state.
-  const updated = [...current, ...runs].slice(-MAX_ACTIVE);
-  await setActives(updated);
-  return updated;
+  if (runs.length === 0) return getActives();
+  if (kv) {
+    const fields: Record<string, ActiveRun> = {};
+    for (const r of runs) fields[r.id] = r;
+    await kv.hset(ACTIVE_KEY, fields);
+  } else {
+    for (const r of runs) memActive.set(r.id, r);
+  }
+  return getActives();
 }
 
 export async function removeActive(id: string): Promise<ActiveRun | null> {
-  const current = await getActives();
-  const found = current.find((r) => r.id === id) ?? null;
-  if (found) await setActives(current.filter((r) => r.id !== id));
-  return found;
+  if (kv) {
+    const run = await kv.hget<ActiveRun>(ACTIVE_KEY, id);
+    if (!run) return null;
+    // hdel is atomic: only the caller that actually deletes the field (→ 1)
+    // "wins", so two simultaneous stops of the same runner can't both
+    // record a result.
+    const deleted = await kv.hdel(ACTIVE_KEY, id);
+    return deleted ? run : null;
+  }
+  const run = memActive.get(id);
+  if (!run) return null;
+  memActive.delete(id);
+  return run;
 }
 
 export async function clearActives(): Promise<void> {
-  await setActives([]);
+  if (kv) await kv.del(ACTIVE_KEY);
+  else memActive.clear();
 }
 
+// ── Results ──────────────────────────────────────────────────────────────
+// Stored as a Redis LIST via LPUSH (atomic append), so simultaneous
+// finishers can't overwrite each other. Newest is at the head.
+
 export async function getResults(): Promise<ResultRun[]> {
-  if (kv) return (await kv.get<ResultRun[]>(RESULTS_KEY)) ?? [];
+  if (kv) return (await kv.lrange<ResultRun>(RESULTS_KEY, 0, -1)) ?? [];
   return memResults;
 }
 
-export async function addResult(result: ResultRun): Promise<ResultRun[]> {
-  const current = await getResults();
-  const updated = [result, ...current].slice(0, MAX_RESULTS);
-  if (kv) await kv.set(RESULTS_KEY, updated);
-  else memResults = updated;
-  return updated;
+export async function addResult(result: ResultRun): Promise<void> {
+  if (kv) {
+    await kv.lpush(RESULTS_KEY, result);
+    await kv.ltrim(RESULTS_KEY, 0, MAX_RESULTS - 1);
+    return;
+  }
+  memResults = [result, ...memResults].slice(0, MAX_RESULTS);
 }
 
 export async function clearResults(): Promise<void> {
