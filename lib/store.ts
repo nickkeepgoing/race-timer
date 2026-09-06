@@ -61,9 +61,13 @@ async function setActives(runs: ActiveRun[]): Promise<void> {
 }
 
 export async function addActive(run: ActiveRun): Promise<ActiveRun[]> {
+  return addActives([run]);
+}
+
+export async function addActives(runs: ActiveRun[]): Promise<ActiveRun[]> {
   const current = await getActives();
   // Cap the number of concurrent runs to avoid runaway state.
-  const updated = [...current, run].slice(-MAX_ACTIVE);
+  const updated = [...current, ...runs].slice(-MAX_ACTIVE);
   await setActives(updated);
   return updated;
 }
