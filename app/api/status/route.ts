@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getActive } from "@/lib/store";
+import { getActives } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const active = await getActive();
+  const active = await getActives();
   return NextResponse.json({ active, serverTime: Date.now() });
 }

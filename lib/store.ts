@@ -17,6 +17,7 @@ export interface ResultRun {
 const ACTIVE_KEY = "race-timer:active";
 const RESULTS_KEY = "race-timer:results";
 const MAX_RESULTS = 500;
+const MAX_ACTIVE = 100;
 
 // Vercel KV is only configured when these env vars are present (set
 // automatically once a KV store is linked to the project in Vercel).
@@ -26,21 +27,40 @@ const MAX_RESULTS = 500;
 // so it is dev-only.
 const hasKV = Boolean(process.env.KV_REST_API_URL);
 
-let memActive: ActiveRun | null = null;
+let memActive: ActiveRun[] = [];
 let memResults: ResultRun[] = [];
 
-export async function getActive(): Promise<ActiveRun | null> {
-  if (hasKV) return (await kv.get<ActiveRun>(ACTIVE_KEY)) ?? null;
+export async function getActives(): Promise<ActiveRun[]> {
+  if (hasKV) return (await kv.get<ActiveRun[]>(ACTIVE_KEY)) ?? [];
   return memActive;
 }
 
-export async function setActive(run: ActiveRun | null): Promise<void> {
+async function setActives(runs: ActiveRun[]): Promise<void> {
   if (hasKV) {
-    if (run) await kv.set(ACTIVE_KEY, run);
+    if (runs.length) await kv.set(ACTIVE_KEY, runs);
     else await kv.del(ACTIVE_KEY);
     return;
   }
-  memActive = run;
+  memActive = runs;
+}
+
+export async function addActive(run: ActiveRun): Promise<ActiveRun[]> {
+  const current = await getActives();
+  // Cap the number of concurrent runs to avoid runaway state.
+  const updated = [...current, run].slice(-MAX_ACTIVE);
+  await setActives(updated);
+  return updated;
+}
+
+export async function removeActive(id: string): Promise<ActiveRun | null> {
+  const current = await getActives();
+  const found = current.find((r) => r.id === id) ?? null;
+  if (found) await setActives(current.filter((r) => r.id !== id));
+  return found;
+}
+
+export async function clearActives(): Promise<void> {
+  await setActives([]);
 }
 
 export async function getResults(): Promise<ResultRun[]> {

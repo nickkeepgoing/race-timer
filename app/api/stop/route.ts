@@ -1,18 +1,28 @@
-import { NextResponse } from "next/server";
-import { getActive, setActive, addResult } from "@/lib/store";
+import { NextRequest, NextResponse } from "next/server";
+import { removeActive, addResult } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
-  const active = await getActive();
+export async function POST(req: NextRequest) {
+  const stopTime = Date.now(); // server clock, same source as start
+  const body = await req.json().catch(() => ({}));
+  const id = typeof body.id === "string" ? body.id : null;
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "ไม่ได้ระบุว่าจะหยุดใคร" },
+      { status: 400 }
+    );
+  }
+
+  const active = await removeActive(id);
   if (!active) {
     return NextResponse.json(
-      { error: "ยังไม่มีการเริ่มจับเวลา" },
+      { error: "รอบนี้ถูกหยุดหรือยกเลิกไปแล้ว" },
       { status: 409 }
     );
   }
 
-  const stopTime = Date.now(); // server clock, same source as start
   const result = {
     id: active.id,
     name: active.name,
@@ -22,7 +32,5 @@ export async function POST() {
   };
 
   await addResult(result);
-  await setActive(null);
-
   return NextResponse.json({ result });
 }

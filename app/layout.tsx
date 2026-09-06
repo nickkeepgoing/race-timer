@@ -28,7 +28,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-body">{children}</body>
+      <body className="font-body antialiased selection:bg-amber/30">{children}</body>
     </html>
   );
 }

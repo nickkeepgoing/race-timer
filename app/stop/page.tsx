@@ -15,11 +15,15 @@ interface ResultRun {
   durationMs: number;
 }
 
+function fmt(ms: number, digits = 1): string {
+  return (Math.max(0, ms) / 1000).toFixed(digits);
+}
+
 export default function StopPage() {
-  const [active, setActive] = useState<ActiveRun | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [active, setActive] = useState<ActiveRun[]>([]);
+  const [now, setNow] = useState(Date.now());
   const [lastResult, setLastResult] = useState<ResultRun | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -28,7 +32,7 @@ export default function StopPage() {
       try {
         const res = await fetch("/api/status", { cache: "no-store" });
         const data = await res.json();
-        setActive(data.active);
+        setActive(Array.isArray(data.active) ? data.active : []);
       } catch {
         // network hiccup — try again next tick
       }
@@ -41,75 +45,113 @@ export default function StopPage() {
   }, []);
 
   useEffect(() => {
-    if (!active) {
-      setElapsedMs(0);
-      return;
-    }
-    const tick = () => setElapsedMs(Date.now() - active.startTime);
-    tick();
-    const id = setInterval(tick, 100);
+    const id = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(id);
-  }, [active]);
+  }, []);
 
-  const handleStop = async () => {
-    setBusy(true);
+  const handleStop = async (id: string) => {
+    setStopping(id);
     setError(null);
+    setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
     try {
-      const res = await fetch("/api/stop", { method: "POST" });
+      const res = await fetch("/api/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "หยุดไม่สำเร็จ");
         return;
       }
       setLastResult(data.result);
-      setActive(null);
     } catch {
       setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
     } finally {
-      setBusy(false);
+      setStopping(null);
     }
   };
 
+  const running = active.slice().sort((a, b) => a.startTime - b.startTime);
+
   return (
-    <main className="min-h-screen flex flex-col items-center justify-between px-6 py-10">
-      <div className="w-full max-w-sm flex items-center justify-between">
-        <Link href="/" className="text-chalk text-sm underline underline-offset-4">
+    <main className="min-h-screen flex flex-col items-center px-5 py-8 gap-6">
+      <header className="w-full max-w-md flex items-center justify-between">
+        <Link
+          href="/"
+          className="tap-target text-chalk text-sm hover:text-lane transition-colors"
+        >
           ← กลับ
         </Link>
-        <span className="uppercase tracking-[0.3em] text-xs text-finish">เส้นชัย</span>
-      </div>
+        <span className="flex items-center gap-2 uppercase tracking-[0.3em] text-xs text-finish">
+          <span className="h-2 w-2 rounded-full bg-finish animate-pulse" />
+          เส้นชัย
+        </span>
+      </header>
 
-      <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
-        {active ? (
-          <>
-            <p className="text-chalk">กำลังจับเวลา</p>
-            <p className="font-display text-3xl text-lane">{active.name}</p>
-            <p className="tabular font-display text-6xl text-finish">
-              {(elapsedMs / 1000).toFixed(1)}s
+      {lastResult && (
+        <div className="w-full max-w-md card rounded-2xl p-4 flex items-center gap-4 animate-floatIn border-finish/30 shadow-glow-finish">
+          <span className="text-2xl" aria-hidden>
+            🏁
+          </span>
+          <div className="min-w-0">
+            <p className="text-chalk text-xs uppercase tracking-wider">
+              เข้าเส้นล่าสุด
             </p>
-          </>
-        ) : lastResult ? (
-          <>
-            <p className="text-chalk">ผลล่าสุด</p>
-            <p className="font-display text-2xl text-lane">{lastResult.name}</p>
-            <p className="tabular font-display text-5xl text-finish">
-              {(lastResult.durationMs / 1000).toFixed(2)}s
+            <p className="font-display text-lg text-lane truncate">
+              {lastResult.name}
             </p>
-            <p className="text-chalk text-sm">รอผู้จับเวลาที่จุดเริ่มกดเริ่มรอบถัดไป</p>
-          </>
+          </div>
+          <span className="ml-auto tabular font-display text-3xl text-finish">
+            {fmt(lastResult.durationMs, 2)}
+            <span className="text-base text-chalk/60">s</span>
+          </span>
+        </div>
+      )}
+
+      <section className="w-full max-w-md flex-1">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-chalk text-sm uppercase tracking-wider">
+            แตะคนที่เข้าเส้น
+          </h2>
+          <span className="text-xs font-display text-finish tabular">
+            {running.length} คนกำลังวิ่ง
+          </span>
+        </div>
+
+        {error && <p className="text-pistol text-sm mb-3">{error}</p>}
+
+        {running.length === 0 ? (
+          <p className="text-chalk/50 text-center text-sm py-14">
+            ยังไม่มีใครกำลังวิ่ง — รอสัญญาณจากจุดเริ่ม
+          </p>
         ) : (
-          <p className="text-chalk">ยังไม่มีการเริ่มจับเวลา — รอสัญญาณจากจุดเริ่ม</p>
+          <ul className="flex flex-col gap-3">
+            {running.map((r) => (
+              <li key={r.id} className="animate-floatIn">
+                <button
+                  onClick={() => handleStop(r.id)}
+                  disabled={stopping === r.id}
+                  className="tap-target group w-full card rounded-2xl px-5 py-4 flex items-center gap-4 border-finish/20 hover:border-finish/50 hover:shadow-glow-finish active:scale-[0.98] transition-all disabled:opacity-40"
+                >
+                  <div className="min-w-0 text-left">
+                    <div className="font-display text-xl text-lane truncate">
+                      {r.name}
+                    </div>
+                    <div className="tabular text-2xl font-display text-chalk">
+                      {fmt(now - r.startTime)}
+                      <span className="text-sm text-chalk/50">s</span>
+                    </div>
+                  </div>
+                  <span className="ml-auto shrink-0 rounded-xl bg-finish text-track font-display text-lg font-bold px-5 py-3 group-active:scale-95 transition-transform">
+                    หยุด
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
-        {error && <p className="text-pistol text-sm">{error}</p>}
-      </div>
-
-      <button
-        onClick={handleStop}
-        disabled={busy || !active}
-        className="tap-target w-full max-w-sm aspect-square max-h-64 rounded-full bg-finish text-track font-display text-3xl font-semibold shadow-2xl shadow-finish/30 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100"
-      >
-        หยุด
-      </button>
+      </section>
     </main>
   );
 }

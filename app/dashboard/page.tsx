@@ -23,16 +23,42 @@ function toCSV(results: ResultRun[]): string {
   return header + rows.join("\n");
 }
 
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+function rankStyle(i: number): {
+  badge: string;
+  time: string;
+  row: string;
+} {
+  if (i === 0)
+    return {
+      badge: "bg-gold text-track",
+      time: "text-gold",
+      row: "border-gold/30 shimmer-gold animate-shimmer",
+    };
+  if (i === 1)
+    return { badge: "bg-silver text-track", time: "text-silver", row: "border-silver/25" };
+  if (i === 2)
+    return { badge: "bg-bronze text-track", time: "text-bronze", row: "border-bronze/25" };
+  return { badge: "bg-white/10 text-chalk", time: "text-lane", row: "border-white/5" };
+}
+
 export default function DashboardPage() {
   const [results, setResults] = useState<ResultRun[]>([]);
+  const [runningCount, setRunningCount] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch("/api/results", { cache: "no-store" });
-        const data = await res.json();
-        setResults(data.results ?? []);
+        const [rRes, sRes] = await Promise.all([
+          fetch("/api/results", { cache: "no-store" }),
+          fetch("/api/status", { cache: "no-store" }),
+        ]);
+        const rData = await rRes.json();
+        const sData = await sRes.json();
+        setResults(rData.results ?? []);
+        setRunningCount(Array.isArray(sData.active) ? sData.active.length : 0);
       } catch {
         // network hiccup — try again next tick
       }
@@ -45,6 +71,7 @@ export default function DashboardPage() {
   }, []);
 
   const sorted = results.slice().sort((a, b) => a.durationMs - b.durationMs);
+  const best = sorted[0];
 
   const handleExport = () => {
     const blob = new Blob([toCSV(results)], { type: "text/csv;charset=utf-8;" });
@@ -63,55 +90,96 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="min-h-screen px-6 py-10 flex flex-col items-center">
-      <div className="w-full max-w-lg flex items-center justify-between mb-8">
-        <Link href="/" className="text-chalk text-sm underline underline-offset-4">
+    <main className="min-h-screen px-5 py-8 flex flex-col items-center">
+      <header className="w-full max-w-lg flex items-center justify-between mb-6">
+        <Link
+          href="/"
+          className="tap-target text-chalk text-sm hover:text-lane transition-colors"
+        >
           ← กลับ
         </Link>
-        <span className="uppercase tracking-[0.3em] text-xs text-amber">ผลการจับเวลา</span>
+        <span className="uppercase tracking-[0.3em] text-xs text-amber">
+          ผลการจับเวลา
+        </span>
+      </header>
+
+      {/* summary strip */}
+      <div className="w-full max-w-lg grid grid-cols-3 gap-3 mb-6">
+        <div className="card rounded-xl p-3 text-center">
+          <div className="font-display text-2xl text-lane tabular">
+            {results.length}
+          </div>
+          <div className="text-chalk text-xs mt-0.5">จบแล้ว</div>
+        </div>
+        <div className="card rounded-xl p-3 text-center">
+          <div className="font-display text-2xl text-finish tabular flex items-center justify-center gap-1.5">
+            {runningCount > 0 && (
+              <span className="h-2 w-2 rounded-full bg-finish animate-pulse" />
+            )}
+            {runningCount}
+          </div>
+          <div className="text-chalk text-xs mt-0.5">กำลังวิ่ง</div>
+        </div>
+        <div className="card rounded-xl p-3 text-center">
+          <div className="font-display text-2xl text-gold tabular">
+            {best ? (best.durationMs / 1000).toFixed(2) : "—"}
+          </div>
+          <div className="text-chalk text-xs mt-0.5">เร็วสุด (วิ)</div>
+        </div>
       </div>
 
       <div className="w-full max-w-lg">
         {sorted.length === 0 ? (
-          <p className="text-chalk text-center mt-16">
-            ยังไม่มีผลการจับเวลา — ผลจะขึ้นที่นี่ทันทีที่มีคนกดหยุด
-          </p>
+          <div className="text-center mt-16">
+            <div className="text-5xl mb-4" aria-hidden>
+              🏁
+            </div>
+            <p className="text-chalk">
+              ยังไม่มีผลการจับเวลา — ผลจะขึ้นที่นี่ทันทีที่มีคนกดหยุด
+            </p>
+          </div>
         ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-chalk text-xs uppercase tracking-wider border-b border-white/10">
-                <th className="py-3 pr-2 w-10">#</th>
-                <th className="py-3 pr-2">ชื่อ / เลน</th>
-                <th className="py-3 text-right tabular">เวลา</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r, i) => (
-                <tr key={r.id} className="border-b border-white/5">
-                  <td className="py-3 pr-2 text-chalk">{i + 1}</td>
-                  <td className="py-3 pr-2 text-lane font-display text-lg">{r.name}</td>
-                  <td className="py-3 text-right tabular font-display text-lg text-amber">
-                    {(r.durationMs / 1000).toFixed(2)}s
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="flex flex-col gap-2.5">
+            {sorted.map((r, i) => {
+              const s = rankStyle(i);
+              return (
+                <li
+                  key={r.id}
+                  className={`card rounded-xl px-4 py-3 flex items-center gap-3 border ${s.row}`}
+                >
+                  <span
+                    className={`shrink-0 h-9 w-9 rounded-full grid place-items-center font-display font-bold text-sm ${s.badge}`}
+                  >
+                    {i < 3 ? MEDALS[i] : i + 1}
+                  </span>
+                  <span className="font-display text-lg text-lane truncate">
+                    {r.name}
+                  </span>
+                  <span
+                    className={`ml-auto tabular font-display text-2xl ${s.time}`}
+                  >
+                    {(r.durationMs / 1000).toFixed(2)}
+                    <span className="text-sm text-chalk/50">s</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
-      <div className="w-full max-w-lg flex gap-3 mt-10">
+      <div className="w-full max-w-lg flex gap-3 mt-8">
         <button
           onClick={handleExport}
           disabled={results.length === 0}
-          className="tap-target flex-1 rounded-xl bg-amber text-track font-display font-semibold py-3 disabled:opacity-30"
+          className="tap-target flex-1 rounded-xl bg-amber text-track font-display font-semibold py-3 active:scale-[0.98] transition-transform disabled:opacity-30"
         >
-          ดาวน์โหลด CSV
+          ⬇ ดาวน์โหลด CSV
         </button>
         <button
           onClick={handleReset}
           disabled={results.length === 0}
-          className="tap-target rounded-xl border border-white/15 text-chalk px-4 py-3 disabled:opacity-30"
+          className="tap-target rounded-xl border border-white/15 text-chalk px-5 py-3 hover:border-pistol/50 hover:text-pistol transition-colors disabled:opacity-30"
         >
           ล้างผล
         </button>
