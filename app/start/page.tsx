@@ -19,6 +19,7 @@ export default function StartPage() {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noSharedStore, setNoSharedStore] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function StartPage() {
         const res = await fetch("/api/status", { cache: "no-store" });
         const data = await res.json();
         setActive(Array.isArray(data.active) ? data.active : []);
+        setNoSharedStore(data.storage ? data.storage.usingKV === false : false);
       } catch {
         // network hiccup — try again next tick
       }
@@ -95,6 +97,13 @@ export default function StartPage() {
           จุดเริ่ม
         </span>
       </header>
+
+      {noSharedStore && (
+        <div className="w-full max-w-md rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-amber text-sm">
+          ⚠️ ยังไม่ได้เชื่อมที่เก็บข้อมูลกลาง (Redis) — เครื่องจุดเริ่มกับเส้นชัยจะ
+          <b>ไม่เห็นกันและกดหยุดไม่ได้</b> ให้เชื่อม Redis บน Vercel ก่อนใช้งานจริง
+        </div>
+      )}
 
       <div className="w-full max-w-md card rounded-2xl p-5">
         <label className="block text-sm text-chalk mb-2">

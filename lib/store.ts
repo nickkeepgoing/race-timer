@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { createClient, type VercelKV } from "@vercel/kv";
 
 export interface ActiveRun {
   id: string;
@@ -19,24 +19,40 @@ const RESULTS_KEY = "race-timer:results";
 const MAX_RESULTS = 500;
 const MAX_ACTIVE = 100;
 
-// Vercel KV is only configured when these env vars are present (set
-// automatically once a KV store is linked to the project in Vercel).
-// Without them we fall back to an in-memory store so `next dev` still
-// works locally. The in-memory store does NOT persist across server
-// restarts and does NOT work across multiple serverless instances,
-// so it is dev-only.
-const hasKV = Boolean(process.env.KV_REST_API_URL);
+// The @vercel/kv client talks to Upstash over its REST API, so it needs a
+// REST url + token. Different Vercel integrations expose these under
+// different env var names, so we look through the common ones instead of
+// relying on the single default (KV_REST_API_URL). If none are present we
+// fall back to an in-memory store so `next dev` works locally — but that
+// store is per-instance and dev-only: on Vercel it makes the start and
+// stop devices unable to see each other. `storeBackend()` reports which
+// mode is active so the app can warn when it is not really using Redis.
+const REST_URL =
+  process.env.KV_REST_API_URL ??
+  process.env.UPSTASH_REDIS_REST_URL ??
+  process.env.REDIS_REST_API_URL ??
+  null;
+const REST_TOKEN =
+  process.env.KV_REST_API_TOKEN ??
+  process.env.UPSTASH_REDIS_REST_TOKEN ??
+  process.env.REDIS_REST_API_TOKEN ??
+  null;
+
+const kv: VercelKV | null =
+  REST_URL && REST_TOKEN
+    ? createClient({ url: REST_URL, token: REST_TOKEN })
+    : null;
 
 let memActive: ActiveRun[] = [];
 let memResults: ResultRun[] = [];
 
 export async function getActives(): Promise<ActiveRun[]> {
-  if (hasKV) return (await kv.get<ActiveRun[]>(ACTIVE_KEY)) ?? [];
+  if (kv) return (await kv.get<ActiveRun[]>(ACTIVE_KEY)) ?? [];
   return memActive;
 }
 
 async function setActives(runs: ActiveRun[]): Promise<void> {
-  if (hasKV) {
+  if (kv) {
     if (runs.length) await kv.set(ACTIVE_KEY, runs);
     else await kv.del(ACTIVE_KEY);
     return;
@@ -64,23 +80,46 @@ export async function clearActives(): Promise<void> {
 }
 
 export async function getResults(): Promise<ResultRun[]> {
-  if (hasKV) return (await kv.get<ResultRun[]>(RESULTS_KEY)) ?? [];
+  if (kv) return (await kv.get<ResultRun[]>(RESULTS_KEY)) ?? [];
   return memResults;
 }
 
 export async function addResult(result: ResultRun): Promise<ResultRun[]> {
   const current = await getResults();
   const updated = [result, ...current].slice(0, MAX_RESULTS);
-  if (hasKV) await kv.set(RESULTS_KEY, updated);
+  if (kv) await kv.set(RESULTS_KEY, updated);
   else memResults = updated;
   return updated;
 }
 
 export async function clearResults(): Promise<void> {
-  if (hasKV) await kv.del(RESULTS_KEY);
+  if (kv) await kv.del(RESULTS_KEY);
   else memResults = [];
 }
 
 export function isUsingKV(): boolean {
-  return hasKV;
+  return kv !== null;
+}
+
+// Diagnostic: reports whether shared Redis storage is active and which
+// KV-related env var names Vercel actually exposed (names only, no secret
+// values). Handy for confirming a deploy is really talking to Redis.
+export function storeBackend(): {
+  usingKV: boolean;
+  detectedEnvVars: string[];
+} {
+  const known = [
+    "KV_REST_API_URL",
+    "KV_REST_API_TOKEN",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+    "REDIS_REST_API_URL",
+    "REDIS_REST_API_TOKEN",
+    "REDIS_URL",
+    "KV_URL",
+  ];
+  return {
+    usingKV: kv !== null,
+    detectedEnvVars: known.filter((k) => Boolean(process.env[k])),
+  };
 }

@@ -25,6 +25,7 @@ export default function StopPage() {
   const [lastResult, setLastResult] = useState<ResultRun | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noSharedStore, setNoSharedStore] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function StopPage() {
         const res = await fetch("/api/status", { cache: "no-store" });
         const data = await res.json();
         setActive(Array.isArray(data.active) ? data.active : []);
+        setNoSharedStore(data.storage ? data.storage.usingKV === false : false);
       } catch {
         // network hiccup — try again next tick
       }
@@ -88,6 +90,13 @@ export default function StopPage() {
           เส้นชัย
         </span>
       </header>
+
+      {noSharedStore && (
+        <div className="w-full max-w-md rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-amber text-sm">
+          ⚠️ ยังไม่ได้เชื่อมที่เก็บข้อมูลกลาง (Redis) — เครื่องนี้จะไม่เห็นคนที่จุดเริ่ม
+          กดออกตัว และกดหยุดไม่ได้ ให้เชื่อม Redis บน Vercel ก่อนใช้งานจริง
+        </div>
+      )}
 
       {lastResult && (
         <div className="w-full max-w-md card rounded-2xl p-4 flex items-center gap-4 animate-floatIn border-finish/30 shadow-glow-finish">
