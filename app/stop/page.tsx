@@ -28,6 +28,7 @@ export default function StopPage() {
   const [error, setError] = useState<string | null>(null);
   const [noSharedStore, setNoSharedStore] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const emptyPollsRef = useRef(0);
   const { serverNow, accuracyMs } = useServerClock();
 
   useEffect(() => {
@@ -37,7 +38,18 @@ export default function StopPage() {
         const data = await res.json();
         // Only replace the list when we actually got one — a failed or
         // rate-limited poll (active:null) must not wipe the runners.
-        if (Array.isArray(data.active)) setActive(data.active);
+        if (Array.isArray(data.active)) {
+          if (data.active.length === 0) {
+            // A single empty read is usually a transient glitch that would
+            // otherwise blank the finish screen mid-race. Require two empties
+            // in a row before believing everyone is really gone.
+            emptyPollsRef.current += 1;
+            if (emptyPollsRef.current >= 2) setActive([]);
+          } else {
+            emptyPollsRef.current = 0;
+            setActive(data.active);
+          }
+        }
         if (data.storage) setNoSharedStore(data.storage.usingKV === false);
       } catch {
         // network hiccup — keep the last known list, try again next tick

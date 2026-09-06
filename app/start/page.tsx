@@ -27,6 +27,7 @@ export default function StartPage() {
   const [flash, setFlash] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const emptyPollsRef = useRef(0);
   const { serverNow, accuracyMs } = useServerClock();
 
   // Load the saved roster once on mount.
@@ -55,7 +56,17 @@ export default function StartPage() {
         const data = await res.json();
         // Only replace the list when we actually got one — a failed or
         // rate-limited poll (active:null) must not wipe the timers.
-        if (Array.isArray(data.active)) setActive(data.active);
+        if (Array.isArray(data.active)) {
+          if (data.active.length === 0) {
+            // Ignore a lone empty read (transient glitch); only clear after
+            // two empties in a row so the running list doesn't flash blank.
+            emptyPollsRef.current += 1;
+            if (emptyPollsRef.current >= 2) setActive([]);
+          } else {
+            emptyPollsRef.current = 0;
+            setActive(data.active);
+          }
+        }
         if (data.storage) setNoSharedStore(data.storage.usingKV === false);
       } catch {
         // network hiccup — keep the last known list, try again next tick
