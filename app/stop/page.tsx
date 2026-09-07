@@ -27,51 +27,50 @@ export default function StopPage() {
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [noSharedStore, setNoSharedStore] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const emptyPollsRef = useRef(0);
-  // Ids we've already stopped locally. A poll that was already in flight when
-  // we tapped stop can still carry the old snapshot; without these tombstones
-  // its `setActive` would resurrect the runner we just finished. We drop the
-  // tombstone once the server itself stops listing the id.
+  // Ids we've already stopped locally — tombstones prevent an SSE push that
+  // was in transit when we tapped from resurrecting a runner we just finished.
   const removedRef = useRef<Set<string>>(new Set());
   const { serverNow, accuracyMs } = useServerClock();
 
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/status", { cache: "no-store" });
-        const data = await res.json();
-        // Only replace the list when we actually got one — a failed or
-        // rate-limited poll (active:null) must not wipe the runners.
-        if (Array.isArray(data.active)) {
-          const removed = removedRef.current;
-          // Once the server no longer lists a stopped id, the tombstone has
-          // done its job and can be forgotten.
-          for (const id of [...removed]) {
-            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      es = new EventSource("/api/events");
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (Array.isArray(data.active)) {
+            const removed = removedRef.current;
+            // Drop tombstones the server has already confirmed gone.
+            for (const id of [...removed]) {
+              if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
+            }
+            // Never re-show a runner we stopped this session.
+            const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
+            setActive(fresh); // SSE push is authoritative — trust it immediately
           }
-          // Never re-show a runner we've already stopped this session.
-          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
-          if (fresh.length === 0) {
-            // A single empty read is usually a transient glitch that would
-            // otherwise blank the finish screen mid-race. Require two empties
-            // in a row before believing everyone is really gone.
-            emptyPollsRef.current += 1;
-            if (emptyPollsRef.current >= 2) setActive([]);
-          } else {
-            emptyPollsRef.current = 0;
-            setActive(fresh);
-          }
+          if (data.storage) setNoSharedStore(data.storage.usingKV === false);
+        } catch { /* malformed frame — ignore */ }
+      };
+
+      // EventSource reconnects automatically on error, but the server also
+      // closes the connection every ~9s (Vercel function limit) so we'll see
+      // frequent onerror events — just reopen immediately.
+      es.onerror = () => {
+        es?.close();
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 300);
         }
-        if (data.storage) setNoSharedStore(data.storage.usingKV === false);
-      } catch {
-        // network hiccup — keep the last known list, try again next tick
-      }
+      };
     };
-    poll();
-    pollRef.current = setInterval(poll, 1500);
+
+    connect();
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, []);
 

@@ -26,10 +26,7 @@ export default function StartPage() {
   const [noSharedStore, setNoSharedStore] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const emptyPollsRef = useRef(0);
-  // Ids cancelled locally — keeps an in-flight poll from resurrecting a runner
-  // we just removed. Cleared once the server stops listing the id.
+  // Tombstones: ids cancelled locally so an SSE push in transit can't resurrect them.
   const removedRef = useRef<Set<string>>(new Set());
   const { serverNow, accuracyMs } = useServerClock();
 
@@ -53,37 +50,39 @@ export default function StartPage() {
   }, [roster]);
 
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/status", { cache: "no-store" });
-        const data = await res.json();
-        // Only replace the list when we actually got one — a failed or
-        // rate-limited poll (active:null) must not wipe the timers.
-        if (Array.isArray(data.active)) {
-          const removed = removedRef.current;
-          for (const id of [...removed]) {
-            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
-          }
-          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
-          if (fresh.length === 0) {
-            // Ignore a lone empty read (transient glitch); only clear after
-            // two empties in a row so the running list doesn't flash blank.
-            emptyPollsRef.current += 1;
-            if (emptyPollsRef.current >= 2) setActive([]);
-          } else {
-            emptyPollsRef.current = 0;
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      es = new EventSource("/api/events");
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (Array.isArray(data.active)) {
+            const removed = removedRef.current;
+            for (const id of [...removed]) {
+              if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
+            }
+            const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
             setActive(fresh);
           }
+          if (data.storage) setNoSharedStore(data.storage.usingKV === false);
+        } catch {}
+      };
+
+      es.onerror = () => {
+        es?.close();
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 300);
         }
-        if (data.storage) setNoSharedStore(data.storage.usingKV === false);
-      } catch {
-        // network hiccup — keep the last known list, try again next tick
-      }
+      };
     };
-    poll();
-    pollRef.current = setInterval(poll, 1500);
+
+    connect();
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, []);
 
