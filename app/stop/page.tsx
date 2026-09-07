@@ -29,6 +29,11 @@ export default function StopPage() {
   const [noSharedStore, setNoSharedStore] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const emptyPollsRef = useRef(0);
+  // Ids we've already stopped locally. A poll that was already in flight when
+  // we tapped stop can still carry the old snapshot; without these tombstones
+  // its `setActive` would resurrect the runner we just finished. We drop the
+  // tombstone once the server itself stops listing the id.
+  const removedRef = useRef<Set<string>>(new Set());
   const { serverNow, accuracyMs } = useServerClock();
 
   useEffect(() => {
@@ -39,7 +44,15 @@ export default function StopPage() {
         // Only replace the list when we actually got one — a failed or
         // rate-limited poll (active:null) must not wipe the runners.
         if (Array.isArray(data.active)) {
-          if (data.active.length === 0) {
+          const removed = removedRef.current;
+          // Once the server no longer lists a stopped id, the tombstone has
+          // done its job and can be forgotten.
+          for (const id of [...removed]) {
+            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
+          }
+          // Never re-show a runner we've already stopped this session.
+          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
+          if (fresh.length === 0) {
             // A single empty read is usually a transient glitch that would
             // otherwise blank the finish screen mid-race. Require two empties
             // in a row before believing everyone is really gone.
@@ -47,7 +60,7 @@ export default function StopPage() {
             if (emptyPollsRef.current >= 2) setActive([]);
           } else {
             emptyPollsRef.current = 0;
-            setActive(data.active);
+            setActive(fresh);
           }
         }
         if (data.storage) setNoSharedStore(data.storage.usingKV === false);
@@ -75,6 +88,7 @@ export default function StopPage() {
     setStopping(id);
     setError(null);
     const snapshot = active; // for rollback if the stop truly fails
+    removedRef.current.add(id); // tombstone: outlives any in-flight poll
     setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
     try {
       const res = await fetch("/api/stop", {
@@ -89,11 +103,14 @@ export default function StopPage() {
         // Already stopped/cancelled elsewhere — the optimistic removal was
         // correct, so just leave it removed.
       } else {
-        // Real failure: put the runner back so it isn't silently lost.
+        // Real failure: put the runner back so it isn't silently lost, and
+        // lift the tombstone so future polls can show it again.
+        removedRef.current.delete(id);
         setActive(snapshot);
         setError(data.error ?? "หยุดไม่สำเร็จ ลองใหม่อีกครั้ง");
       }
     } catch {
+      removedRef.current.delete(id);
       setActive(snapshot);
       setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
     } finally {

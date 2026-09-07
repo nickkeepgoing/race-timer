@@ -28,6 +28,9 @@ export default function StartPage() {
   const draftRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const emptyPollsRef = useRef(0);
+  // Ids cancelled locally — keeps an in-flight poll from resurrecting a runner
+  // we just removed. Cleared once the server stops listing the id.
+  const removedRef = useRef<Set<string>>(new Set());
   const { serverNow, accuracyMs } = useServerClock();
 
   // Load the saved roster once on mount.
@@ -57,14 +60,19 @@ export default function StartPage() {
         // Only replace the list when we actually got one — a failed or
         // rate-limited poll (active:null) must not wipe the timers.
         if (Array.isArray(data.active)) {
-          if (data.active.length === 0) {
+          const removed = removedRef.current;
+          for (const id of [...removed]) {
+            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
+          }
+          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
+          if (fresh.length === 0) {
             // Ignore a lone empty read (transient glitch); only clear after
             // two empties in a row so the running list doesn't flash blank.
             emptyPollsRef.current += 1;
             if (emptyPollsRef.current >= 2) setActive([]);
           } else {
             emptyPollsRef.current = 0;
-            setActive(data.active);
+            setActive(fresh);
           }
         }
         if (data.storage) setNoSharedStore(data.storage.usingKV === false);
@@ -139,6 +147,7 @@ export default function StartPage() {
   };
 
   const handleCancel = async (id: string) => {
+    removedRef.current.add(id); // tombstone: outlives any in-flight poll
     setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
     try {
       await fetch("/api/cancel", {
@@ -147,7 +156,8 @@ export default function StartPage() {
         body: JSON.stringify({ id }),
       });
     } catch {
-      // will re-sync on next poll
+      // network hiccup — lift the tombstone so a later poll can restore it
+      removedRef.current.delete(id);
     }
   };
 
