@@ -21,6 +21,11 @@ export interface ResultRun {
 const ACTIVE_KEY = "race-timer:active:v2";
 const RESULTS_KEY = "race-timer:results:v2";
 const MAX_RESULTS = 500;
+// Safety net for orphaned runners: if a run is never stopped or cancelled (a
+// device closed mid-race, a test left behind, etc.) the whole active set
+// expires after this window instead of counting up forever. Refreshed on every
+// start, so it comfortably outlasts any real race day but clears stray data.
+const ACTIVE_TTL_SECONDS = 12 * 60 * 60; // 12h
 
 // The @vercel/kv client talks to Upstash over its REST API, so it needs a
 // REST url + token. Different Vercel integrations expose these under
@@ -94,6 +99,8 @@ export async function addActives(runs: ActiveRun[]): Promise<ActiveRun[]> {
     const fields: Record<string, ActiveRun> = {};
     for (const r of runs) fields[r.id] = r;
     await kv.hset(ACTIVE_KEY, fields);
+    // Refresh the orphan-expiry each time the roster is released.
+    await kv.expire(ACTIVE_KEY, ACTIVE_TTL_SECONDS);
   } else {
     for (const r of runs) memActive.set(r.id, r);
   }

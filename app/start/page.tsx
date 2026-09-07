@@ -161,6 +161,24 @@ export default function StartPage() {
     }
   };
 
+  const handleCancelAll = async () => {
+    if (active.length === 0) return;
+    if (!confirm("ยกเลิกนักวิ่งที่กำลังวิ่งทั้งหมดใช่ไหม? เวลาที่จับอยู่จะถูกลบ")) return;
+    // Tombstone everyone so an in-flight poll can't bring them back.
+    for (const r of active) removedRef.current.add(r.id);
+    setActive([]); // optimistic
+    try {
+      // Empty body → the API clears every active runner at once.
+      await fetch("/api/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+    } catch {
+      // will re-sync on next poll
+    }
+  };
+
   const running = active.slice().sort((a, b) => a.startTime - b.startTime);
 
   return (
@@ -287,9 +305,19 @@ export default function StartPage() {
           <h2 className="text-chalk text-sm uppercase tracking-wider">
             กำลังวิ่ง
           </h2>
-          <span className="text-xs font-display text-pistol tabular">
-            {running.length} คน
-          </span>
+          <div className="flex items-center gap-3">
+            {running.length > 0 && (
+              <button
+                onClick={handleCancelAll}
+                className="tap-target text-xs text-chalk/60 hover:text-pistol underline underline-offset-4 transition-colors"
+              >
+                ยกเลิกทั้งหมด
+              </button>
+            )}
+            <span className="text-xs font-display text-pistol tabular">
+              {running.length} คน
+            </span>
+          </div>
         </div>
 
         {running.length === 0 ? (
