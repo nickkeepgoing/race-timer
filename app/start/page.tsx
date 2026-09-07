@@ -28,6 +28,9 @@ export default function StartPage() {
   const draftRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const emptyPollsRef = useRef(0);
+  // Ids cancelled locally — keeps an in-flight poll from resurrecting a runner
+  // we just removed. Cleared once the server stops listing the id.
+  const removedRef = useRef<Set<string>>(new Set());
   const { serverNow, accuracyMs } = useServerClock();
 
   // Load the saved roster once on mount.
@@ -57,14 +60,19 @@ export default function StartPage() {
         // Only replace the list when we actually got one — a failed or
         // rate-limited poll (active:null) must not wipe the timers.
         if (Array.isArray(data.active)) {
-          if (data.active.length === 0) {
+          const removed = removedRef.current;
+          for (const id of [...removed]) {
+            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
+          }
+          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
+          if (fresh.length === 0) {
             // Ignore a lone empty read (transient glitch); only clear after
             // two empties in a row so the running list doesn't flash blank.
             emptyPollsRef.current += 1;
             if (emptyPollsRef.current >= 2) setActive([]);
           } else {
             emptyPollsRef.current = 0;
-            setActive(data.active);
+            setActive(fresh);
           }
         }
         if (data.storage) setNoSharedStore(data.storage.usingKV === false);
@@ -139,12 +147,32 @@ export default function StartPage() {
   };
 
   const handleCancel = async (id: string) => {
+    removedRef.current.add(id); // tombstone: outlives any in-flight poll
     setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
     try {
       await fetch("/api/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
+      });
+    } catch {
+      // network hiccup — lift the tombstone so a later poll can restore it
+      removedRef.current.delete(id);
+    }
+  };
+
+  const handleCancelAll = async () => {
+    if (active.length === 0) return;
+    if (!confirm("ยกเลิกนักวิ่งที่กำลังวิ่งทั้งหมดใช่ไหม? เวลาที่จับอยู่จะถูกลบ")) return;
+    // Tombstone everyone so an in-flight poll can't bring them back.
+    for (const r of active) removedRef.current.add(r.id);
+    setActive([]); // optimistic
+    try {
+      // Empty body → the API clears every active runner at once.
+      await fetch("/api/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
       });
     } catch {
       // will re-sync on next poll
@@ -277,9 +305,19 @@ export default function StartPage() {
           <h2 className="text-chalk text-sm uppercase tracking-wider">
             กำลังวิ่ง
           </h2>
-          <span className="text-xs font-display text-pistol tabular">
-            {running.length} คน
-          </span>
+          <div className="flex items-center gap-3">
+            {running.length > 0 && (
+              <button
+                onClick={handleCancelAll}
+                className="tap-target text-xs text-chalk/60 hover:text-pistol underline underline-offset-4 transition-colors"
+              >
+                ยกเลิกทั้งหมด
+              </button>
+            )}
+            <span className="text-xs font-display text-pistol tabular">
+              {running.length} คน
+            </span>
+          </div>
         </div>
 
         {running.length === 0 ? (

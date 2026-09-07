@@ -21,6 +21,11 @@ export interface ResultRun {
 const ACTIVE_KEY = "race-timer:active:v2";
 const RESULTS_KEY = "race-timer:results:v2";
 const MAX_RESULTS = 500;
+// Safety net for orphaned runners: if a run is never stopped or cancelled (a
+// device closed mid-race, a test left behind, etc.) the whole active set
+// expires after this window instead of counting up forever. Refreshed on every
+// start, so it comfortably outlasts any real race day but clears stray data.
+const ACTIVE_TTL_SECONDS = 12 * 60 * 60; // 12h
 
 // The @vercel/kv client talks to Upstash over its REST API, so it needs a
 // REST url + token. Different Vercel integrations expose these under
@@ -65,6 +70,25 @@ export async function getActives(): Promise<ActiveRun[]> {
   return [...memActive.values()];
 }
 
+// Like getActives, but for the display poll — where "empty" must be trustworthy
+// because the finish device uses it to decide whether to clear its stop
+// buttons. hgetall can transiently return null/empty (replica lag, a hiccupy
+// read) even while runners are still active; forwarding that as [] is what made
+// every stop button vanish mid-race. So on an empty read we do a second,
+// independent check: only report [] when the key genuinely does not exist.
+// Otherwise return null → "unknown, keep the current list". A throw here (real
+// outage / rate limit) propagates and is handled by the caller the same way.
+export async function getActivesForPoll(): Promise<ActiveRun[] | null> {
+  if (!kv) return [...memActive.values()];
+  const all = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
+  if (all && Object.keys(all).length > 0) return Object.values(all);
+  // Empty/null read — could be "truly nobody" or a transient miss. The hash is
+  // deleted only when its last field is removed (hdel) or on cancel-all (del),
+  // so a missing key is the one reliable signal that nobody is running.
+  const exists = await kv.exists(ACTIVE_KEY);
+  return exists ? null : [];
+}
+
 export async function addActive(run: ActiveRun): Promise<ActiveRun[]> {
   return addActives([run]);
 }
@@ -75,6 +99,8 @@ export async function addActives(runs: ActiveRun[]): Promise<ActiveRun[]> {
     const fields: Record<string, ActiveRun> = {};
     for (const r of runs) fields[r.id] = r;
     await kv.hset(ACTIVE_KEY, fields);
+    // Refresh the orphan-expiry each time the roster is released.
+    await kv.expire(ACTIVE_KEY, ACTIVE_TTL_SECONDS);
   } else {
     for (const r of runs) memActive.set(r.id, r);
   }
