@@ -77,21 +77,40 @@ export async function getActives(): Promise<ActiveRun[]> {
   return [...memActive.values()];
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Backoff between retries below, in ms. Confirmed in production: the poll
+// right after a release can read the active hash as empty, and it can take
+// more than one cycle to settle — a single quick retry wasn't always enough.
+// Kept under 1s total so it never overlaps the next scheduled poll.
+const EMPTY_READ_RETRY_DELAYS_MS = [300, 600];
+
 // Like getActives, but for the display poll — where "empty" must be trustworthy
 // because the finish device uses it to decide whether to clear its stop
 // buttons. hgetall can transiently return null/empty (replica lag, a hiccupy
 // read) even while runners are still active; forwarding that as [] is what made
-// every stop button vanish mid-race. So on an empty read we do a second,
-// independent check: only report [] when the key genuinely does not exist.
-// Otherwise return null → "unknown, keep the current list". A throw here (real
+// every stop button vanish mid-race — and made a runner who really did start
+// look like they never did, forcing a re-run. So on an empty read we retry a
+// few times with backoff before believing it, and only then fall back to a
+// second, independent check: report [] when the key genuinely does not exist,
+// otherwise null → "unknown, keep the current list". A throw here (real
 // outage / rate limit) propagates and is handled by the caller the same way.
 export async function getActivesForPoll(): Promise<ActiveRun[] | null> {
   if (!kv) return [...memActive.values()];
-  const all = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
-  if (all && Object.keys(all).length > 0) return Object.values(all);
-  // Empty/null read — could be "truly nobody" or a transient miss. The hash is
-  // deleted only when its last field is removed (hdel) or on cancel-all (del),
-  // so a missing key is the one reliable signal that nobody is running.
+
+  for (const delayMs of EMPTY_READ_RETRY_DELAYS_MS) {
+    const all = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
+    if (all && Object.keys(all).length > 0) return Object.values(all);
+    await sleep(delayMs);
+  }
+
+  const last = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
+  if (last && Object.keys(last).length > 0) return Object.values(last);
+
+  // Still empty after all retries — could be "truly nobody" or a longer-lived
+  // miss. The hash is deleted only when its last field is removed (hdel) or on
+  // cancel-all (del), so a missing key is the one reliable signal that nobody
+  // is running.
   const exists = await kv.exists(ACTIVE_KEY);
   return exists ? null : [];
 }
