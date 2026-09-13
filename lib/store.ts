@@ -79,11 +79,15 @@ export async function getActives(): Promise<ActiveRun[]> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Backoff between retries below, in ms. Confirmed in production: the poll
-// right after a release can read the active hash as empty, and it can take
-// more than one cycle to settle — a single quick retry wasn't always enough.
-// Kept under 1s total so it never overlaps the next scheduled poll.
-const EMPTY_READ_RETRY_DELAYS_MS = [300, 600];
+// Backoff between retries below, in ms. Confirmed in production: an empty
+// read can be wrong for several seconds at a time (observed up to ~15s during
+// a region-config change taking effect), not just a single hiccup — so this
+// keeps trying a bit longer than a single quick retry. It still can't cover
+// every outage without making the common "genuinely nobody running" case slow
+// to respond, so this is a mitigation, not a full fix — the real fix is a
+// consistent (non-multi-region) store. Kept under ~3s total so a poll never
+// meaningfully overlaps the next scheduled one.
+const EMPTY_READ_RETRY_DELAYS_MS = [300, 500, 800, 1200];
 
 // Like getActives, but for the display poll — where "empty" must be trustworthy
 // because the finish device uses it to decide whether to clear its stop
