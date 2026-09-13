@@ -187,15 +187,6 @@ export default function StopPage() {
 
   const runningCount = rows.filter((r) => !r.done).length;
 
-  // Podium rank by finish time (fastest = 1), for a bit of at-a-glance meaning.
-  const rank = new Map<string, number>();
-  finished
-    .slice()
-    .sort((a, b) => a.durationMs - b.durationMs)
-    .forEach((f, i) => rank.set(f.id, i + 1));
-  const medal = (n: number) =>
-    n === 1 ? "text-gold" : n === 2 ? "text-silver" : n === 3 ? "text-bronze" : "text-chalk/60";
-
   const lastResult = finished.find((f) => f.id === lastId) ?? null;
 
   return (
@@ -245,34 +236,29 @@ export default function StopPage() {
           <ul className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto slim-scroll pr-1 pb-2">
             {rows.map((r) =>
               r.done ? (
+                // Same footprint as the running row — same height, padding,
+                // name and time sizes — so the row does not budge when stopped.
+                // Only the live timer freezes (green) and the หยุด button
+                // becomes an un-tappable หยุดแล้ว tag.
                 <li
                   key={r.id}
                   className={`shrink-0 card rounded-2xl min-h-[88px] px-5 py-3 flex items-center gap-4 transition-colors ${
                     r.id === lastId
                       ? "border-finish/50 shadow-glow-finish"
-                      : "border-finish/10 opacity-60"
+                      : "border-finish/20 opacity-70"
                   }`}
                 >
-                  <span
-                    className={`shrink-0 w-8 text-center font-display text-lg tabular ${medal(
-                      rank.get(r.id) ?? 0
-                    )}`}
-                  >
-                    {rank.get(r.id)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="font-display text-base text-lane/80 truncate">
+                  <div className="min-w-0 text-left">
+                    <div className="font-display text-xl text-lane truncate">
                       {r.name}
                     </div>
-                    {r.id === lastId && (
-                      <div className="text-[10px] uppercase tracking-wider text-finish">
-                        เข้าเส้นล่าสุด
-                      </div>
-                    )}
+                    <div className="tabular text-2xl font-display text-finish">
+                      {fmt((r as ResultRun).durationMs, 2)}
+                      <span className="text-sm text-chalk/50">s</span>
+                    </div>
                   </div>
-                  <span className="ml-auto tabular font-display text-xl text-finish">
-                    {fmt((r as ResultRun).durationMs, 2)}
-                    <span className="text-sm text-chalk/50">s</span>
+                  <span className="ml-auto shrink-0 rounded-xl border border-finish/40 text-finish/80 font-display text-sm px-4 py-3">
+                    หยุดแล้ว
                   </span>
                 </li>
               ) : (
