@@ -1,0 +1,89 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+/**
+ * Estimates the offset between this device's clock and the server clock so
+ * timestamps captured at the moment of a tap can be expressed on the
+ * server's timeline — without the network round-trip inflating them.
+ *
+ * Uses Cristian's algorithm: for each probe, the true server time when the
+ * response arrives is approximately serverTime + rtt/2 (assuming roughly
+ * symmetric latency). We take several probes and keep the one with the
+ * smallest round-trip, since that sample has the least uncertainty.
+ *
+ * The first calibration (on mount) uses the full default probe count, because
+ * that one fix anchors every timestamp the device will send. The periodic
+ * re-syncs pass a smaller count — they only have to absorb drift.
+ *
+ * A re-sync that lands on a congested moment produces a high-rtt sample, and a
+ * high-rtt sample is a *worse* fix than the one already in hand — adopting it
+ * would shift every timestamp taken afterwards. So the "keep the best round
+ * trip" rule is applied across calibrations, not just within one: a new fix
+ * replaces the current one only if it is at least as trustworthy. Two escapes
+ * keep that from freezing a lucky sample forever — the current fix going stale
+ * (real drift has to get corrected eventually) and a run of rejections (the
+ * network may simply be slower now than it was when we got lucky).
+ */
+const FIX_STALE_AFTER_MS = 5 * 60 * 1000;
+const MAX_REJECTED_IN_A_ROW = 4;
+
+export function useServerClock() {
+  const offsetRef = useRef(0); // serverClock - deviceClock, in ms
+  // Quality of the fix currently in offsetRef: its round-trip and when it was
+  // taken (device clock — only ever used for elapsed comparisons).
+  const fixRef = useRef<{ rtt: number; at: number } | null>(null);
+  const rejectedRef = useRef(0);
+  const [ready, setReady] = useState(false);
+  const [accuracyMs, setAccuracyMs] = useState<number | null>(null);
+
+  const calibrate = useCallback(async (probes = 15) => {
+    let best: { offset: number; rtt: number } | null = null;
+    for (let i = 0; i < probes; i++) {
+      try {
+        const t0 = Date.now();
+        const res = await fetch("/api/time", { cache: "no-store" });
+        const t1 = Date.now();
+        const data = await res.json();
+        if (typeof data.serverTime !== "number") continue;
+        const rtt = t1 - t0;
+        // server clock at the instant we received the response
+        const offset = data.serverTime + rtt / 2 - t1;
+        if (!best || rtt < best.rtt) best = { offset, rtt };
+      } catch {
+        // ignore this probe
+      }
+    }
+    if (!best) return;
+
+    const current = fixRef.current;
+    const accept =
+      !current ||
+      best.rtt <= current.rtt ||
+      Date.now() - current.at > FIX_STALE_AFTER_MS ||
+      rejectedRef.current >= MAX_REJECTED_IN_A_ROW;
+
+    if (!accept) {
+      rejectedRef.current += 1;
+      return;
+    }
+
+    rejectedRef.current = 0;
+    offsetRef.current = best.offset;
+    fixRef.current = { rtt: best.rtt, at: Date.now() };
+    setAccuracyMs(Math.round(best.rtt / 2)); // worst-case sync error
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    calibrate(); // first fix: full 15 probes
+    // Re-sync periodically to absorb clock drift over a long session.
+    const id = setInterval(() => calibrate(3), 30000);
+    return () => clearInterval(id);
+  }, [calibrate]);
+
+  // Current time on the server's timeline.
+  const serverNow = useCallback(() => Date.now() + offsetRef.current, []);
+
+  return { serverNow, ready, accuracyMs, recalibrate: calibrate };
+}
