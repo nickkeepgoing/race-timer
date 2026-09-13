@@ -247,7 +247,7 @@ export default function StopPage() {
               r.done ? (
                 <li
                   key={r.id}
-                  className={`shrink-0 card rounded-2xl px-5 py-3.5 flex items-center gap-4 transition-colors ${
+                  className={`shrink-0 card rounded-2xl min-h-[88px] px-5 py-3 flex items-center gap-4 transition-colors ${
                     r.id === lastId
                       ? "border-finish/50 shadow-glow-finish"
                       : "border-finish/10 opacity-60"
@@ -280,7 +280,7 @@ export default function StopPage() {
                   <button
                     onClick={() => handleStop(r)}
                     disabled={stopping === r.id}
-                    className="tap-target group w-full card rounded-2xl px-5 py-4 flex items-center gap-4 border-finish/20 hover:border-finish/50 hover:shadow-glow-finish active:scale-[0.98] transition-[transform,border-color,box-shadow] disabled:opacity-40"
+                    className="tap-target group w-full card rounded-2xl min-h-[88px] px-5 py-3 flex items-center gap-4 border-finish/20 hover:border-finish/50 hover:shadow-glow-finish active:scale-[0.98] transition-[transform,border-color,box-shadow] disabled:opacity-40"
                   >
                     <div className="min-w-0 text-left">
                       <div className="font-display text-xl text-lane truncate">
