@@ -124,7 +124,9 @@ export default function StartPage() {
       const res = await fetch("/api/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names: roster, startTime }),
+        // accuracyMs travels with the gun so each result can report how
+        // much of its time is clock-sync uncertainty.
+        body: JSON.stringify({ names: roster, startTime, accuracyMs }),
       });
       const data = await res.json();
       if (!res.ok) {

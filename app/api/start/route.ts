@@ -14,12 +14,27 @@ function sanitizeTs(v: unknown, fallback: number): number {
   return fallback;
 }
 
+// Accept a device-reported clock-sync accuracy (± ms) only if it is a sane,
+// non-negative figure. Anything missing, negative, infinite or absurdly large
+// becomes undefined, so a result carries no margin at all rather than a made-up
+// one.
+function sanitizeAccuracy(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 5000) {
+    return Math.round(v);
+  }
+  return undefined;
+}
+
 export async function POST(req: NextRequest) {
   const serverNow = Date.now();
   const body = await req.json().catch(() => ({}));
 
   // Single shared timestamp for the whole batch → a true mass ("gun") start.
   const startTime = sanitizeTs(body.startTime, serverNow);
+
+  // How well *this* start device is synced to the server clock. Every runner
+  // released in this batch shares the same gun, so they share this figure too.
+  const startAccuracyMs = sanitizeAccuracy(body.accuracyMs);
 
   // Accept either { names: string[] } (mass start) or { name: string }.
   const raw: unknown[] = Array.isArray(body.names)
@@ -36,6 +51,7 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID(),
       name: name || `นักวิ่ง ${existingCount + i + 1}`,
       startTime,
+      startAccuracyMs,
     }));
 
   if (runs.length === 0) {

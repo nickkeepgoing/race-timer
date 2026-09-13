@@ -9,16 +9,23 @@ interface ResultRun {
   startTime: number;
   stopTime: number;
   durationMs: number;
+  // Worst-case clock-sync error behind durationMs. Older results don't have it.
+  marginMs?: number;
 }
 
 function toCSV(results: ResultRun[]): string {
-  const header = "อันดับ,ชื่อ/เลน,เวลา (วินาที),เวลาที่บันทึก\n";
+  const header =
+    "อันดับ,ชื่อ/เลน,เวลา (วินาที),ความคลาดเคลื่อน (วินาที),เวลาที่บันทึก\n";
   const rows = results
     .slice()
     .sort((a, b) => a.durationMs - b.durationMs)
     .map((r, i) => {
       const time = new Date(r.stopTime).toLocaleTimeString("th-TH");
-      return `${i + 1},${r.name},${(r.durationMs / 1000).toFixed(2)},${time}`;
+      // Blank rather than 0 when the margin is unknown (results recorded
+      // before devices reported their sync accuracy).
+      const margin =
+        typeof r.marginMs === "number" ? (r.marginMs / 1000).toFixed(2) : "";
+      return `${i + 1},${r.name},${(r.durationMs / 1000).toFixed(2)},${margin},${time}`;
     });
   return header + rows.join("\n");
 }
@@ -123,7 +130,7 @@ export default function DashboardPage() {
         </div>
         <div className="card rounded-xl p-3 text-center">
           <div className="font-display text-2xl text-gold tabular">
-            {best ? (best.durationMs / 1000).toFixed(2) : "—"}
+            {best ? (best.durationMs / 1000).toFixed(1) : "—"}
           </div>
           <div className="text-chalk text-xs mt-0.5">เร็วสุด (วิ)</div>
         </div>
@@ -159,7 +166,13 @@ export default function DashboardPage() {
                   <span
                     className={`ml-auto tabular font-display text-2xl ${s.time}`}
                   >
-                    {(r.durationMs / 1000).toFixed(2)}
+                    {(r.durationMs / 1000).toFixed(1)}
+                    {typeof r.marginMs === "number" && (
+                      <span className="text-sm text-chalk/50">
+                        {" "}
+                        ± {(r.marginMs / 1000).toFixed(1)}
+                      </span>
+                    )}
                     <span className="text-sm text-chalk/50">s</span>
                   </span>
                 </li>
