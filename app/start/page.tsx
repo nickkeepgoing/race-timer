@@ -50,39 +50,36 @@ export default function StartPage() {
   }, [roster]);
 
   useEffect(() => {
-    let es: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    // Plain polling instead of SSE — see /app/stop/page.tsx for why.
+    const POLL_MS = 1000;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = () => {
-      es = new EventSource("/api/events");
-
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (Array.isArray(data.active)) {
-            const removed = removedRef.current;
-            for (const id of [...removed]) {
-              if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
-            }
-            const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
-            setActive(fresh);
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/status", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data.active)) {
+          const removed = removedRef.current;
+          for (const id of [...removed]) {
+            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
           }
-          if (data.storage) setNoSharedStore(data.storage.usingKV === false);
-        } catch {}
-      };
-
-      es.onerror = () => {
-        es?.close();
-        if (!reconnectTimer) {
-          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 300);
+          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
+          setActive(fresh);
         }
-      };
+        if (data.storage) setNoSharedStore(data.storage.usingKV === false);
+      } catch {
+        // network hiccup — keep current list, retry next tick
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, POLL_MS);
+      }
     };
 
-    connect();
+    poll();
     return () => {
-      es?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, []);
 

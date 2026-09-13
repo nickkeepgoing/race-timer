@@ -33,44 +33,42 @@ export default function StopPage() {
   const { serverNow, accuracyMs } = useServerClock();
 
   useEffect(() => {
-    let es: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    // Plain polling instead of SSE: on Vercel the streamed response can sit
+    // buffered until the function closes (~9s), so a "push within 300ms"
+    // design was actually arriving 9-15s late. A finish-line tap tolerates
+    // ~1s of latency fine, and polling has no buffering surprises.
+    const POLL_MS = 1000;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = () => {
-      es = new EventSource("/api/events");
-
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (Array.isArray(data.active)) {
-            const removed = removedRef.current;
-            // Drop tombstones the server has already confirmed gone.
-            for (const id of [...removed]) {
-              if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
-            }
-            // Never re-show a runner we stopped this session.
-            const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
-            setActive(fresh); // SSE push is authoritative — trust it immediately
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/status", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data.active)) {
+          const removed = removedRef.current;
+          // Drop tombstones the server has already confirmed gone.
+          for (const id of [...removed]) {
+            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
           }
-          if (data.storage) setNoSharedStore(data.storage.usingKV === false);
-        } catch { /* malformed frame — ignore */ }
-      };
-
-      // EventSource reconnects automatically on error, but the server also
-      // closes the connection every ~9s (Vercel function limit) so we'll see
-      // frequent onerror events — just reopen immediately.
-      es.onerror = () => {
-        es?.close();
-        if (!reconnectTimer) {
-          reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 300);
+          // Never re-show a runner we stopped this session.
+          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
+          setActive(fresh);
         }
-      };
+        // data.active === null → transient/uncertain read; keep current list.
+        if (data.storage) setNoSharedStore(data.storage.usingKV === false);
+      } catch {
+        // network hiccup — keep current list, retry next tick
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, POLL_MS);
+      }
     };
 
-    connect();
+    poll();
     return () => {
-      es?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
