@@ -79,37 +79,47 @@ export async function getActives(): Promise<ActiveRun[]> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Backoff between retries below, in ms. Confirmed in production: an empty
-// read can be wrong for several seconds at a time (observed up to ~15s during
-// a region-config change taking effect), not just a single hiccup — so this
-// keeps trying a bit longer than a single quick retry. It still can't cover
-// every outage without making the common "genuinely nobody running" case slow
-// to respond, so this is a mitigation, not a full fix — the real fix is a
-// consistent (non-multi-region) store. Kept under ~3s total so a poll never
-// meaningfully overlaps the next scheduled one.
+// Gap between the two verification reads below, in ms.
+const VERIFY_READ_GAP_MS = 250;
+
+// Backoff between retries once both verification reads come back empty, in
+// ms. Confirmed in production: an empty read can be wrong for several
+// seconds at a time (observed up to ~15s during a region-config change
+// taking effect), not just a single hiccup. Kept under ~3s total so a poll
+// never meaningfully overlaps the next scheduled one.
 const EMPTY_READ_RETRY_DELAYS_MS = [300, 500, 800, 1200];
 
-// Like getActives, but for the display poll — where "empty" must be trustworthy
-// because the finish device uses it to decide whether to clear its stop
-// buttons. hgetall can transiently return null/empty (replica lag, a hiccupy
-// read) even while runners are still active; forwarding that as [] is what made
-// every stop button vanish mid-race — and made a runner who really did start
-// look like they never did, forcing a re-run. So on an empty read we retry a
-// few times with backoff before believing it, and only then fall back to a
-// second, independent check: report [] when the key genuinely does not exist,
-// otherwise null → "unknown, keep the current list". A throw here (real
-// outage / rate limit) propagates and is handled by the caller the same way.
+// Like getActives, but for the display poll — where the result must be
+// trustworthy because the finish device uses it to decide which stop
+// buttons to show. hgetall can transiently disagree with itself: not just
+// all-or-nothing empty, but a *partial* read that's missing some real
+// entries while still looking non-empty (confirmed in production: a poll
+// right after releasing 20 runners came back with only 10). A single read
+// can't tell "partial" apart from "correct", so every poll takes the union
+// of two independent reads a short beat apart — the observed failure mode
+// drops real entries, it never fabricates fake ones, so the union recovers
+// whatever either read alone would have missed. If the union is still
+// empty, retry with backoff before believing it, then fall back to a
+// second, independent check: report [] when the key genuinely does not
+// exist, otherwise null → "unknown, keep the current list". A throw here
+// (real outage / rate limit) propagates and is handled by the caller the
+// same way.
 export async function getActivesForPoll(): Promise<ActiveRun[] | null> {
   if (!kv) return [...memActive.values()];
 
+  const merged = new Map<string, ActiveRun>();
+  for (let i = 0; i < 2; i++) {
+    const all = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
+    if (all) for (const [id, run] of Object.entries(all)) merged.set(id, run);
+    if (i === 0) await sleep(VERIFY_READ_GAP_MS);
+  }
+  if (merged.size > 0) return [...merged.values()];
+
   for (const delayMs of EMPTY_READ_RETRY_DELAYS_MS) {
+    await sleep(delayMs);
     const all = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
     if (all && Object.keys(all).length > 0) return Object.values(all);
-    await sleep(delayMs);
   }
-
-  const last = await kv.hgetall<Record<string, ActiveRun>>(ACTIVE_KEY);
-  if (last && Object.keys(last).length > 0) return Object.values(last);
 
   // Still empty after all retries — could be "truly nobody" or a longer-lived
   // miss. The hash is deleted only when its last field is removed (hdel) or on
