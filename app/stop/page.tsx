@@ -13,7 +13,9 @@ interface ActiveRun {
 interface ResultRun {
   id: string;
   name: string;
+  startTime: number;
   durationMs: number;
+  marginMs?: number;
 }
 
 // A stop the server has not accepted yet. Holding the captured tap moment here
@@ -22,9 +24,10 @@ interface ResultRun {
 // guards against.
 interface PendingStop {
   id: string;
+  name: string;
+  startTime: number;
   stopTime: number; // server-clock instant of the tap
   accuracyMs: number | null; // sync accuracy at the moment of the tap
-  snapshot: ActiveRun[]; // list to restore if the stop truly fails
 }
 
 // Automatic retry backoff, in ms. Three attempts after the first try.
@@ -39,7 +42,11 @@ function fmt(ms: number, digits = 1): string {
 export default function StopPage() {
   const [active, setActive] = useState<ActiveRun[]>([]);
   const [now, setNow] = useState(Date.now());
-  const [lastResult, setLastResult] = useState<ResultRun | null>(null);
+  // Every runner we've finished this session, kept forever so their row never
+  // vanishes — a vanishing row shifts every runner below it up into the spot
+  // you were about to tap. Keyed by id.
+  const [finished, setFinished] = useState<ResultRun[]>([]);
+  const [lastId, setLastId] = useState<string | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -47,10 +54,8 @@ export default function StopPage() {
   // manual retry that reuses the original timestamp.
   const [pendingStop, setPendingStop] = useState<PendingStop | null>(null);
   const [noSharedStore, setNoSharedStore] = useState(false);
-  // Ids we've already stopped locally — tombstones prevent a poll response
-  // that was in flight when we tapped from resurrecting a runner we just
-  // finished.
-  const removedRef = useRef<Set<string>>(new Set());
+  const finishedRef = useRef<ResultRun[]>([]);
+  finishedRef.current = finished;
   const { serverNow, accuracyMs } = useServerClock();
 
   useEffect(() => {
@@ -68,14 +73,10 @@ export default function StopPage() {
         const data = await res.json();
         if (cancelled) return;
         if (Array.isArray(data.active)) {
-          const removed = removedRef.current;
-          // Drop tombstones the server has already confirmed gone.
-          for (const id of [...removed]) {
-            if (!data.active.some((r: ActiveRun) => r.id === id)) removed.delete(id);
-          }
-          // Never re-show a runner we stopped this session.
-          const fresh = data.active.filter((r: ActiveRun) => !removed.has(r.id));
-          setActive(fresh);
+          // A runner we've finished must never reappear as "running", even if a
+          // poll that was in flight when we tapped still lists them.
+          const done = new Set(finishedRef.current.map((f) => f.id));
+          setActive(data.active.filter((r: ActiveRun) => !done.has(r.id)));
         }
         // data.active === null → transient/uncertain read; keep current list.
         if (data.storage) setNoSharedStore(data.storage.usingKV === false);
@@ -98,18 +99,29 @@ export default function StopPage() {
     return () => clearInterval(id);
   }, [serverNow]);
 
+  const upsertFinished = (r: ResultRun) =>
+    setFinished((prev) => {
+      const i = prev.findIndex((f) => f.id === r.id);
+      if (i === -1) return [...prev, r];
+      const next = prev.slice();
+      next[i] = r;
+      return next;
+    });
+
   // Sends one already-captured stop, retrying a flaky network on its own. The
-  // button stays in its stopping state for the whole sequence so the runner is
-  // never re-timed by a second tap.
+  // runner's row flips to a finished result immediately (in place, so nothing
+  // below it moves) using the locally-known time, then reconciles with the
+  // server's authoritative result.
   const submitStop = async (pending: PendingStop) => {
-    const { id, stopTime, accuracyMs: tapAccuracyMs, snapshot } = pending;
+    const { id, name, startTime, stopTime, accuracyMs: tapAccuracyMs } = pending;
     setStopping(id);
     setError(null);
     setPendingStop(null);
-    removedRef.current.add(id); // tombstone: outlives any in-flight poll
-    setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
+    // Optimistic finish, in the runner's own fixed slot. Same formula the
+    // server uses (stopTime - startTime), so the shown time won't jump.
+    upsertFinished({ id, name, startTime, durationMs: Math.max(0, stopTime - startTime) });
+    setLastId(id);
 
-    // Only clear the stopping flag if a later tap hasn't claimed it.
     const finish = () => {
       setRetrying(false);
       setStopping((prev) => (prev === id ? null : prev));
@@ -132,13 +144,12 @@ export default function StopPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          setLastResult(data.result);
+          if (data.result) upsertFinished(data.result); // authoritative time/margin
           finish();
           return;
         }
         if (res.status === 409) {
-          // Already stopped/cancelled elsewhere — the optimistic removal was
-          // correct, so just leave it removed. Retrying can't help.
+          // Already stopped/cancelled elsewhere — our optimistic finish stands.
           finish();
           return;
         }
@@ -148,34 +159,48 @@ export default function StopPage() {
       }
     }
 
-    // Out of automatic attempts. Put the runner back so it isn't silently
-    // lost, lift the tombstone so polls can show it again, and keep the
-    // captured timestamp for the manual "ลองอีกครั้ง" button.
-    removedRef.current.delete(id);
-    setActive(snapshot);
+    // Out of automatic attempts. Pull the row back to "running" (its slot is
+    // unchanged) and keep the captured timestamp for the manual retry.
+    setFinished((prev) => prev.filter((f) => f.id !== id));
+    if (lastId === id) setLastId(null);
     setError(`${lastError} — เวลาที่จับไว้ยังอยู่`);
     setPendingStop(pending);
     finish();
   };
 
-  const handleStop = (id: string) => {
-    // Capture the exact tap moment first, before any async work, so the
-    // finish time reflects when the finger hit the button — not when the
-    // request reached the server.
+  const handleStop = (r: ActiveRun) => {
+    // Capture the exact tap moment first, before any async work, so the finish
+    // time reflects when the finger hit the button — not when the request
+    // reached the server.
     const stopTime = serverNow();
-    return submitStop({
-      id,
-      stopTime,
-      accuracyMs,
-      snapshot: active, // for rollback if the stop truly fails
-    });
+    return submitStop({ id: r.id, name: r.name, startTime: r.startTime, stopTime, accuracyMs });
   };
 
-  const running = active.slice().sort((a, b) => a.startTime - b.startTime);
+  // One stable, fixed-order slot per runner: sorted by startTime, which never
+  // changes, and no row is ever removed. Finishing a runner recolours their own
+  // row in place — the running rows below stay exactly where your thumb expects.
+  const doneIds = new Set(finished.map((f) => f.id));
+  const rows = [
+    ...active.filter((a) => !doneIds.has(a.id)).map((a) => ({ ...a, done: false as const })),
+    ...finished.map((f) => ({ ...f, done: true as const })),
+  ].sort((a, b) => a.startTime - b.startTime);
+
+  const runningCount = rows.filter((r) => !r.done).length;
+
+  // Podium rank by finish time (fastest = 1), for a bit of at-a-glance meaning.
+  const rank = new Map<string, number>();
+  finished
+    .slice()
+    .sort((a, b) => a.durationMs - b.durationMs)
+    .forEach((f, i) => rank.set(f.id, i + 1));
+  const medal = (n: number) =>
+    n === 1 ? "text-gold" : n === 2 ? "text-silver" : n === 3 ? "text-bronze" : "text-chalk/60";
+
+  const lastResult = finished.find((f) => f.id === lastId) ?? null;
 
   return (
-    <main className="min-h-screen flex flex-col items-center px-5 py-8 gap-6">
-      <header className="w-full max-w-md flex items-center justify-between">
+    <main className="h-screen flex flex-col items-center px-5 pt-8 pb-4 gap-5">
+      <header className="w-full max-w-md flex items-center justify-between shrink-0">
         <Link
           href="/"
           className="tap-target text-chalk text-sm hover:text-lane transition-colors"
@@ -196,94 +221,133 @@ export default function StopPage() {
       </header>
 
       {noSharedStore && (
-        <div className="w-full max-w-md rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-amber text-sm">
+        <div className="w-full max-w-md shrink-0 rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-amber text-sm">
           ⚠️ ยังไม่ได้เชื่อมที่เก็บข้อมูลกลาง (Redis) — เครื่องนี้จะไม่เห็นคนที่จุดเริ่ม
           กดออกตัว และกดหยุดไม่ได้ ให้เชื่อม Redis บน Vercel ก่อนใช้งานจริง
         </div>
       )}
 
-      {lastResult && (
-        <div className="w-full max-w-md card rounded-2xl p-4 flex items-center gap-4 animate-floatIn border-finish/30 shadow-glow-finish">
-          <span className="text-2xl" aria-hidden>
-            🏁
-          </span>
-          <div className="min-w-0">
-            <p className="text-chalk text-xs uppercase tracking-wider">
-              เข้าเส้นล่าสุด
-            </p>
-            <p className="font-display text-lg text-lane truncate">
-              {lastResult.name}
-            </p>
-          </div>
-          <span className="ml-auto tabular font-display text-3xl text-finish">
-            {fmt(lastResult.durationMs, 2)}
-            <span className="text-base text-chalk/60">s</span>
-          </span>
-        </div>
-      )}
-
-      <section className="w-full max-w-md flex-1">
-        <div className="flex items-center justify-between mb-3">
+      <section className="w-full max-w-md flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between mb-3 shrink-0">
           <h2 className="text-chalk text-sm uppercase tracking-wider">
             แตะคนที่เข้าเส้น
           </h2>
           <span className="text-xs font-display text-finish tabular">
-            {running.length} คนกำลังวิ่ง
+            {runningCount} คนกำลังวิ่ง
           </span>
         </div>
 
-        {retrying && (
-          <p className="text-amber text-sm mb-3">
-            กำลังลองส่งใหม่… (ใช้เวลาที่จับไว้เดิม)
-          </p>
-        )}
-
-        {error && (
-          <div className="mb-3 flex items-center gap-3">
-            <p className="text-pistol text-sm flex-1">{error}</p>
-            {pendingStop && (
-              <button
-                onClick={() => submitStop(pendingStop)}
-                disabled={stopping !== null}
-                className="tap-target shrink-0 rounded-lg border border-finish/50 text-finish text-xs px-3 py-2 hover:bg-finish/10 transition-colors disabled:opacity-40"
-              >
-                ลองอีกครั้ง (เวลาเดิม)
-              </button>
-            )}
-          </div>
-        )}
-
-        {running.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-chalk/50 text-center text-sm py-14">
             ยังไม่มีใครกำลังวิ่ง — รอสัญญาณจากจุดเริ่ม
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
-            {running.map((r) => (
-              <li key={r.id} className="animate-floatIn">
-                <button
-                  onClick={() => handleStop(r.id)}
-                  disabled={stopping === r.id}
-                  className="tap-target group w-full card rounded-2xl px-5 py-4 flex items-center gap-4 border-finish/20 hover:border-finish/50 hover:shadow-glow-finish active:scale-[0.98] transition-all disabled:opacity-40"
+          <ul className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto slim-scroll pr-1 pb-2">
+            {rows.map((r) =>
+              r.done ? (
+                <li
+                  key={r.id}
+                  className={`shrink-0 card rounded-2xl px-5 py-3.5 flex items-center gap-4 transition-colors ${
+                    r.id === lastId
+                      ? "border-finish/50 shadow-glow-finish"
+                      : "border-finish/10 opacity-60"
+                  }`}
                 >
-                  <div className="min-w-0 text-left">
-                    <div className="font-display text-xl text-lane truncate">
+                  <span
+                    className={`shrink-0 w-8 text-center font-display text-lg tabular ${medal(
+                      rank.get(r.id) ?? 0
+                    )}`}
+                  >
+                    {rank.get(r.id)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-display text-base text-lane/80 truncate">
                       {r.name}
                     </div>
-                    <div className="tabular text-2xl font-display text-chalk">
-                      {fmt(now - r.startTime)}
-                      <span className="text-sm text-chalk/50">s</span>
-                    </div>
+                    {r.id === lastId && (
+                      <div className="text-[10px] uppercase tracking-wider text-finish">
+                        เข้าเส้นล่าสุด
+                      </div>
+                    )}
                   </div>
-                  <span className="ml-auto shrink-0 rounded-xl bg-finish text-track font-display text-lg font-bold px-5 py-3 group-active:scale-95 transition-transform">
-                    หยุด
+                  <span className="ml-auto tabular font-display text-xl text-finish">
+                    {fmt((r as ResultRun).durationMs, 2)}
+                    <span className="text-sm text-chalk/50">s</span>
                   </span>
-                </button>
-              </li>
-            ))}
+                </li>
+              ) : (
+                <li key={r.id} className="shrink-0 animate-floatIn">
+                  <button
+                    onClick={() => handleStop(r)}
+                    disabled={stopping === r.id}
+                    className="tap-target group w-full card rounded-2xl px-5 py-4 flex items-center gap-4 border-finish/20 hover:border-finish/50 hover:shadow-glow-finish active:scale-[0.98] transition-[transform,border-color,box-shadow] disabled:opacity-40"
+                  >
+                    <div className="min-w-0 text-left">
+                      <div className="font-display text-xl text-lane truncate">
+                        {r.name}
+                      </div>
+                      <div className="tabular text-2xl font-display text-chalk">
+                        {fmt(now - r.startTime)}
+                        <span className="text-sm text-chalk/50">s</span>
+                      </div>
+                    </div>
+                    <span className="ml-auto shrink-0 rounded-xl bg-finish text-track font-display text-lg font-bold px-5 py-3 group-active:scale-95 transition-transform">
+                      หยุด
+                    </span>
+                  </button>
+                </li>
+              )
+            )}
           </ul>
         )}
       </section>
+
+      {/* Transient status lives out of the layout flow (fixed) so it can never
+          push the tap rows around. */}
+      {(error || retrying || lastResult) && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 flex justify-center px-5 z-20">
+          <div className="w-full max-w-md pointer-events-auto">
+            {error ? (
+              <div className="card rounded-2xl border-pistol/40 px-4 py-3 flex items-center gap-3 animate-floatIn">
+                <p className="text-pistol text-sm flex-1">{error}</p>
+                {pendingStop && (
+                  <button
+                    onClick={() => submitStop(pendingStop)}
+                    disabled={stopping !== null}
+                    className="tap-target shrink-0 rounded-lg border border-finish/50 text-finish text-xs px-3 py-2 hover:bg-finish/10 transition-colors disabled:opacity-40"
+                  >
+                    ลองอีกครั้ง (เวลาเดิม)
+                  </button>
+                )}
+              </div>
+            ) : retrying ? (
+              <div className="card rounded-2xl border-amber/30 px-4 py-3 text-amber text-sm animate-floatIn">
+                กำลังลองส่งใหม่… (ใช้เวลาที่จับไว้เดิม)
+              </div>
+            ) : (
+              lastResult && (
+                <div className="card rounded-2xl border-finish/30 shadow-glow-finish px-4 py-3 flex items-center gap-3 animate-floatIn">
+                  <span className="text-xl" aria-hidden>
+                    🏁
+                  </span>
+                  <p className="font-display text-lane truncate flex-1">
+                    {lastResult.name}
+                  </p>
+                  <span className="tabular font-display text-2xl text-finish">
+                    {fmt(lastResult.durationMs, 2)}
+                    <span className="text-sm text-chalk/60">s</span>
+                    {lastResult.marginMs !== undefined && (
+                      <span className="ml-1 text-[10px] text-chalk/50">
+                        ±{fmt(lastResult.marginMs, 2)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
