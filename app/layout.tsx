@@ -1,5 +1,24 @@
 import type { Metadata } from "next";
+import { Inter, Oswald } from "next/font/google";
 import "./globals.css";
+
+// Self-hosted at build time by next/font instead of fetched from Google at
+// page load: one less external request on the stadium's wifi, and no flash of
+// unstyled numbers on the timer screens. Thai text has no glyphs in either
+// face, so it falls through to the device's own sans — which is what it
+// already did with the old <link> tags.
+const oswald = Oswald({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "จับเวลาวิ่ง",
@@ -19,15 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="th">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="th" className={`${oswald.variable} ${inter.variable}`}>
       <body className="font-body antialiased selection:bg-amber/30">{children}</body>
     </html>
   );

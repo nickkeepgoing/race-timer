@@ -4,6 +4,9 @@ export interface ActiveRun {
   id: string;
   name: string;
   startTime: number; // ms, server clock
+  // Worst-case clock-sync error of the device that released this runner, in
+  // ms. Undefined for runs started before this was recorded.
+  startAccuracyMs?: number;
 }
 
 export interface ResultRun {
@@ -12,6 +15,10 @@ export interface ResultRun {
   startTime: number;
   stopTime: number;
   durationMs: number;
+  // Worst-case error of durationMs: start-device sync error + stop-device sync
+  // error. Left undefined when neither side reported one, so an unknown margin
+  // is never displayed as a confident ±0.
+  marginMs?: number;
 }
 
 // v2 keys: the original code stored these as plain JSON strings via kv.set.

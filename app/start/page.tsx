@@ -26,7 +26,8 @@ export default function StartPage() {
   const [noSharedStore, setNoSharedStore] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement | null>(null);
-  // Tombstones: ids cancelled locally so an SSE push in transit can't resurrect them.
+  // Tombstones: ids cancelled locally so a poll response in flight can't
+  // resurrect them.
   const removedRef = useRef<Set<string>>(new Set());
   const { serverNow, accuracyMs } = useServerClock();
 
@@ -50,7 +51,7 @@ export default function StartPage() {
   }, [roster]);
 
   useEffect(() => {
-    // Plain polling instead of SSE — see /app/stop/page.tsx for why.
+    // Plain polling — see app/stop/page.tsx for why not Server-Sent Events.
     const POLL_MS = 1000;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -124,7 +125,9 @@ export default function StartPage() {
       const res = await fetch("/api/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names: roster, startTime }),
+        // accuracyMs travels with the gun so each result can report how
+        // much of its time is clock-sync uncertainty.
+        body: JSON.stringify({ names: roster, startTime, accuracyMs }),
       });
       const data = await res.json();
       if (!res.ok) {

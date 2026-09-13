@@ -17,8 +17,8 @@ const config: Config = {
         bronze: "#E08A4B",
       },
       fontFamily: {
-        display: ["Oswald", "sans-serif"],
-        body: ["Inter", "sans-serif"],
+        display: ["var(--font-display)", "sans-serif"],
+        body: ["var(--font-body)", "sans-serif"],
       },
       boxShadow: {
         glow: "0 0 40px -8px rgba(255,75,46,0.55)",

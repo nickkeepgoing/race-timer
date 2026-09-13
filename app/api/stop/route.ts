@@ -13,11 +13,24 @@ function sanitizeTs(v: unknown, fallback: number): number {
   return fallback;
 }
 
+// Accept a device-reported clock-sync accuracy (± ms) only if it is a sane,
+// non-negative figure. Anything missing, negative, infinite or absurdly large
+// becomes undefined, so a result carries no margin at all rather than a made-up
+// one.
+function sanitizeAccuracy(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 5000) {
+    return Math.round(v);
+  }
+  return undefined;
+}
+
 export async function POST(req: NextRequest) {
   const serverNow = Date.now();
   const body = await req.json().catch(() => ({}));
   const id = typeof body.id === "string" ? body.id : null;
   const stopTime = sanitizeTs(body.stopTime, serverNow);
+  // Sync accuracy of the finish device that sent this tap.
+  const stopAccuracyMs = sanitizeAccuracy(body.accuracyMs);
 
   if (!id) {
     return NextResponse.json(
@@ -34,12 +47,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Worst case: both devices are off by their full sync error, in opposite
+  // directions. If neither side reported an accuracy we leave the margin out
+  // entirely — an unknown margin must not read as "accurate to ±0".
+  const startAccuracyMs = active.startAccuracyMs;
+  const marginMs =
+    startAccuracyMs === undefined && stopAccuracyMs === undefined
+      ? undefined
+      : (startAccuracyMs ?? 0) + (stopAccuracyMs ?? 0);
+
   const result = {
     id: active.id,
     name: active.name,
     startTime: active.startTime,
     stopTime,
     durationMs: Math.max(0, stopTime - active.startTime),
+    ...(marginMs !== undefined ? { marginMs } : {}),
   };
 
   await addResult(result);
