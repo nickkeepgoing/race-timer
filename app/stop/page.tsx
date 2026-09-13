@@ -187,6 +187,19 @@ export default function StopPage() {
 
   const runningCount = rows.filter((r) => !r.done).length;
 
+  // Same name can legitimately belong to two different runners (no bib
+  // numbers here) — append #1/#2 in start order only when it's ambiguous, so
+  // whoever's tapping has something to tell them apart by.
+  const rowNameCounts = new Map<string, number>();
+  for (const r of rows) rowNameCounts.set(r.name, (rowNameCounts.get(r.name) ?? 0) + 1);
+  const rowNameSeen = new Map<string, number>();
+  const displayName = (r: { name: string }) => {
+    if ((rowNameCounts.get(r.name) ?? 0) <= 1) return r.name;
+    const n = (rowNameSeen.get(r.name) ?? 0) + 1;
+    rowNameSeen.set(r.name, n);
+    return `${r.name} #${n}`;
+  };
+
   const lastResult = finished.find((f) => f.id === lastId) ?? null;
 
   return (
@@ -250,7 +263,7 @@ export default function StopPage() {
                 >
                   <div className="min-w-0 text-left">
                     <div className="font-display text-xl text-lane truncate">
-                      {r.name}
+                      {displayName(r)}
                     </div>
                     <div className="tabular text-2xl font-display text-finish">
                       {fmt((r as ResultRun).durationMs, 2)}
@@ -270,7 +283,7 @@ export default function StopPage() {
                   >
                     <div className="min-w-0 text-left">
                       <div className="font-display text-xl text-lane truncate">
-                        {r.name}
+                        {displayName(r)}
                       </div>
                       <div className="tabular text-2xl font-display text-chalk">
                         {fmt(now - r.startTime)}

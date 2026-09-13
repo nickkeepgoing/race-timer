@@ -180,6 +180,19 @@ export default function StartPage() {
 
   const running = active.slice().sort((a, b) => a.startTime - b.startTime);
 
+  // Same name can legitimately belong to two different runners (no bib
+  // numbers here) — append #1/#2 in start order only when it's ambiguous, so
+  // the finish-line volunteer has something to tell them apart by.
+  const runningNameCounts = new Map<string, number>();
+  for (const r of running) runningNameCounts.set(r.name, (runningNameCounts.get(r.name) ?? 0) + 1);
+  const runningNameSeen = new Map<string, number>();
+  const displayName = (r: ActiveRun) => {
+    if ((runningNameCounts.get(r.name) ?? 0) <= 1) return r.name;
+    const n = (runningNameSeen.get(r.name) ?? 0) + 1;
+    runningNameSeen.set(r.name, n);
+    return `${r.name} #${n}`;
+  };
+
   return (
     <main className="min-h-screen flex flex-col items-center px-5 py-8 gap-5">
       <header className="w-full max-w-md flex items-center justify-between">
@@ -247,6 +260,13 @@ export default function StartPage() {
             เพิ่ม
           </button>
         </div>
+
+        {draft.trim() && roster.some((r) => r.trim() === draft.trim()) && (
+          <p className="text-amber text-xs mt-2">
+            ⚠️ มีชื่อนี้ในรายชื่ออยู่แล้ว — ปล่อยตัวได้ตามปกติ ระบบจะแยกให้เองที่เส้นชัย
+            (เช่น &quot;{draft.trim()} #1&quot;, &quot;#2&quot;)
+          </p>
+        )}
 
         <button
           onClick={addNextLane}
@@ -335,7 +355,7 @@ export default function StartPage() {
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-pistol" />
                 </span>
                 <span className="font-display text-lg text-lane truncate">
-                  {r.name}
+                  {displayName(r)}
                 </span>
                 <span className="ml-auto tabular font-display text-2xl text-pistol">
                   {fmt(now - r.startTime)}
