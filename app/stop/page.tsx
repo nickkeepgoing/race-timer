@@ -16,6 +16,22 @@ interface ResultRun {
   durationMs: number;
 }
 
+// A stop the server has not accepted yet. Holding the captured tap moment here
+// is the whole point: every retry must re-send *that* instant, never a fresh
+// clock reading — re-timing a finish that already happened is the bug this
+// guards against.
+interface PendingStop {
+  id: string;
+  stopTime: number; // server-clock instant of the tap
+  accuracyMs: number | null; // sync accuracy at the moment of the tap
+  snapshot: ActiveRun[]; // list to restore if the stop truly fails
+}
+
+// Automatic retry backoff, in ms. Three attempts after the first try.
+const RETRY_DELAYS = [500, 1500, 3000];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 function fmt(ms: number, digits = 1): string {
   return (Math.max(0, ms) / 1000).toFixed(digits);
 }
@@ -26,6 +42,10 @@ export default function StopPage() {
   const [lastResult, setLastResult] = useState<ResultRun | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  // Kept after every automatic attempt failed, so the error UI can offer a
+  // manual retry that reuses the original timestamp.
+  const [pendingStop, setPendingStop] = useState<PendingStop | null>(null);
   const [noSharedStore, setNoSharedStore] = useState(false);
   // Ids we've already stopped locally — tombstones prevent an SSE push that
   // was in transit when we tapped from resurrecting a runner we just finished.
@@ -77,42 +97,77 @@ export default function StopPage() {
     return () => clearInterval(id);
   }, [serverNow]);
 
-  const handleStop = async (id: string) => {
+  // Sends one already-captured stop, retrying a flaky network on its own. The
+  // button stays in its stopping state for the whole sequence so the runner is
+  // never re-timed by a second tap.
+  const submitStop = async (pending: PendingStop) => {
+    const { id, stopTime, accuracyMs: tapAccuracyMs, snapshot } = pending;
+    setStopping(id);
+    setError(null);
+    setPendingStop(null);
+    removedRef.current.add(id); // tombstone: outlives any in-flight poll
+    setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
+
+    // Only clear the stopping flag if a later tap hasn't claimed it.
+    const finish = () => {
+      setRetrying(false);
+      setStopping((prev) => (prev === id ? null : prev));
+    };
+
+    let lastError = "หยุดไม่สำเร็จ ลองใหม่อีกครั้ง";
+
+    for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+      if (attempt > 0) {
+        setRetrying(true);
+        await sleep(RETRY_DELAYS[attempt - 1]);
+      }
+      try {
+        const res = await fetch("/api/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // Same stopTime and accuracyMs on every attempt — the clock is
+          // deliberately not read again here.
+          body: JSON.stringify({ id, stopTime, accuracyMs: tapAccuracyMs }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setLastResult(data.result);
+          finish();
+          return;
+        }
+        if (res.status === 409) {
+          // Already stopped/cancelled elsewhere — the optimistic removal was
+          // correct, so just leave it removed. Retrying can't help.
+          finish();
+          return;
+        }
+        lastError = data.error ?? lastError;
+      } catch {
+        lastError = "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้";
+      }
+    }
+
+    // Out of automatic attempts. Put the runner back so it isn't silently
+    // lost, lift the tombstone so polls can show it again, and keep the
+    // captured timestamp for the manual "ลองอีกครั้ง" button.
+    removedRef.current.delete(id);
+    setActive(snapshot);
+    setError(`${lastError} — เวลาที่จับไว้ยังอยู่`);
+    setPendingStop(pending);
+    finish();
+  };
+
+  const handleStop = (id: string) => {
     // Capture the exact tap moment first, before any async work, so the
     // finish time reflects when the finger hit the button — not when the
     // request reached the server.
     const stopTime = serverNow();
-    setStopping(id);
-    setError(null);
-    const snapshot = active; // for rollback if the stop truly fails
-    removedRef.current.add(id); // tombstone: outlives any in-flight poll
-    setActive((prev) => prev.filter((r) => r.id !== id)); // optimistic
-    try {
-      const res = await fetch("/api/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, stopTime }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLastResult(data.result);
-      } else if (res.status === 409) {
-        // Already stopped/cancelled elsewhere — the optimistic removal was
-        // correct, so just leave it removed.
-      } else {
-        // Real failure: put the runner back so it isn't silently lost, and
-        // lift the tombstone so future polls can show it again.
-        removedRef.current.delete(id);
-        setActive(snapshot);
-        setError(data.error ?? "หยุดไม่สำเร็จ ลองใหม่อีกครั้ง");
-      }
-    } catch {
-      removedRef.current.delete(id);
-      setActive(snapshot);
-      setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง");
-    } finally {
-      setStopping(null);
-    }
+    return submitStop({
+      id,
+      stopTime,
+      accuracyMs,
+      snapshot: active, // for rollback if the stop truly fails
+    });
   };
 
   const running = active.slice().sort((a, b) => a.startTime - b.startTime);
@@ -176,7 +231,26 @@ export default function StopPage() {
           </span>
         </div>
 
-        {error && <p className="text-pistol text-sm mb-3">{error}</p>}
+        {retrying && (
+          <p className="text-amber text-sm mb-3">
+            กำลังลองส่งใหม่… (ใช้เวลาที่จับไว้เดิม)
+          </p>
+        )}
+
+        {error && (
+          <div className="mb-3 flex items-center gap-3">
+            <p className="text-pistol text-sm flex-1">{error}</p>
+            {pendingStop && (
+              <button
+                onClick={() => submitStop(pendingStop)}
+                disabled={stopping !== null}
+                className="tap-target shrink-0 rounded-lg border border-finish/50 text-finish text-xs px-3 py-2 hover:bg-finish/10 transition-colors disabled:opacity-40"
+              >
+                ลองอีกครั้ง (เวลาเดิม)
+              </button>
+            )}
+          </div>
+        )}
 
         {running.length === 0 ? (
           <p className="text-chalk/50 text-center text-sm py-14">
