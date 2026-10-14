@@ -243,6 +243,14 @@ const sweep = setInterval(() => {
   for (const ws of wss.clients) if (Date.now() - ws.seen > IDLE_MS) ws.terminate();
 }, 5000);
 
+server.on("error", (err) => {
+  if (err.code !== "EADDRINUSE") throw err;
+  console.error(`\n  พอร์ต ${PORT} มีโปรแกรมอื่นใช้อยู่ (อาจเป็นเซิร์ฟเวอร์ตัวนี้ที่เปิดค้างไว้อีกหน้าต่าง)`);
+  console.error(`  ปิดตัวเดิมก่อน หรือใช้พอร์ตอื่น เช่น  PowerShell: $env:PORT=8788; npm run dev`);
+  console.error(`                                     bash:       PORT=8788 npm run dev\n`);
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
   console.log(`\n  จับเวลาวิ่ง — relay พร้อมแล้ว${DEV ? " (dev)" : ""}`);
   console.log(`  เครื่องนี้:      http://localhost:${PORT}`);
