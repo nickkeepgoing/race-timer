@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="จับเวลาวิ่งหลายเครื่องแบบเรียลไทม์ ใช้ได้ทุกเครื่อง แม้เน็ตหลุด" />
+    <meta name="theme-color" content="#F3EFE5" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>จับเวลาวิ่ง</title>
+    <script>
+      // Resolve the theme before first paint so there is no flash.
+      try {
+        var t = localStorage.getItem("rt:theme");
+        if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* "Sunlight": the default — a sports day is outdoors, and dark screens wash
+   out in direct sun. Paper-white like a race bib, tartan-track red, infield
+   green. */
+:root {
+  --paper: 243 239 229;
+  --card: 255 255 255;
+  --ink: 20 18 14;
+  --muted: 104 98 86;
+  --line: 222 214 198;
+  --start: 210 64 40;
+  --finish: 10 122 72;
+  --gold: 190 128 0;
+  --silver: 116 124 136;
+  --bronze: 168 96 46;
+  --grain: 0.05;
+  color-scheme: light;
+}
+
+/* "Floodlight": evening meets and indoor halls. */
+:root[data-theme="dark"] {
+  --paper: 16 15 13;
+  --card: 29 27 23;
+  --ink: 244 240 230;
+  --muted: 158 150 135;
+  --line: 54 50 43;
+  --start: 255 94 62;
+  --finish: 48 204 128;
+  --gold: 255 196 46;
+  --silver: 196 204 214;
+  --bronze: 230 142 82;
+  --grain: 0.08;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
+  /* no accidental pull-to-refresh mid-race */
+  overscroll-behavior-y: contain;
+}
+
+body {
+  @apply font-body antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* paper grain */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+button,
+a,
+input {
+  touch-action: manipulation; /* no double-tap zoom delay on fast taps */
+}
+
+:focus-visible {
+  outline: 3px solid rgb(var(--ink) / 0.6);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-card;
+    box-shadow: 0 1px 0 rgb(var(--ink) / 0.04), 0 8px 24px -16px rgb(var(--ink) / 0.25);
+  }
+
+  /* the running track: tartan with painted lane lines */
+  .tartan {
+    background-color: #c8452c; /* a real track is the same colour day or night */
+    background-image:
+      repeating-linear-gradient(90deg, rgb(255 255 255 / 0.85) 0 3px, transparent 3px 25%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  }
+
+  /* a race bib: four safety pins */
+  .bib {
+    --pin: rgb(var(--ink) / 0.28);
+    background-color: rgb(var(--card));
+    background-image:
+      radial-gradient(circle at 9px 9px, var(--pin) 2.5px, transparent 3px),
+      radial-gradient(circle at calc(100% - 9px) 9px, var(--pin) 2.5px, transparent 3px),
+      radial-gradient(circle at 9px calc(100% - 9px), var(--pin) 2.5px, transparent 3px),
+      radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), var(--pin) 2.5px, transparent 3px);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs font-medium;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-display font-semibold transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* fixed-width digit cells: a running timer never jitters, whatever the font */
+.digits > .d {
+  display: inline-block;
+  width: 0.6em;
+  text-align: center;
+}
+
+.slim-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--ink) / 0.15);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
