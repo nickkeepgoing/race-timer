@@ -100,7 +100,11 @@ export class Room {
     this.closed = false;
     this.heartbeat = setInterval(() => this.beat(), PING_EVERY_MS);
     const health = this.url.replace(/^ws/, "http").replace(/\/ws$/, "/health");
-    this.keepAwake = setInterval(() => fetch(health, { cache: "no-store" }).catch(() => {}), KEEP_AWAKE_MS);
+    // Right away too: the server may already be close to its 15 minutes (soak
+    // test #2 dropped at 4 min, just before the first 4-minute call).
+    const wakeServer = () => void fetch(health, { cache: "no-store" }).catch(() => {});
+    wakeServer();
+    this.keepAwake = setInterval(wakeServer, KEEP_AWAKE_MS);
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.wake);
       document.addEventListener("visibilitychange", this.onVisible);
