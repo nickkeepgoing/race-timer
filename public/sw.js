@@ -8,7 +8,7 @@ self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname === "/info") return;
+  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname === "/info" || url.pathname === "/health") return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

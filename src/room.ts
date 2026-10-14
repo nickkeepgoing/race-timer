@@ -34,6 +34,10 @@ const PING_EVERY_MS = 4000;
 const DEAD_AFTER_MS = 12000; // mobile networks drop sockets silently
 const KEEP_SAMPLES = 8; // ~30s of pings: absorbs drift and clock steps
 const SYNCED_AFTER = 3;
+// Free hosting (Render) puts the server to sleep after 15 minutes without an
+// HTTP request — WebSocket traffic doesn't count (measured: all sockets dropped
+// at 15.9 min of a busy WebSocket-only session). Any open device keeps it up.
+const KEEP_AWAKE_MS = 4 * 60 * 1000;
 
 export class Room {
   events = new Map<string, Ev>();
@@ -48,6 +52,7 @@ export class Room {
   private samples: { off: number; rtt: number }[] = [];
   private ws: WebSocket | null = null;
   private relayHas = new Set<string>(); // per connection
+  private sent = new Set<string>(); // per connection: sent, echo not back yet
   private dropped = new Set<string>(); // rejected by the relay
   private gotLog = false;
   private closed = true;
@@ -55,6 +60,7 @@ export class Room {
   private lastMsg = 0;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private keepAwake: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<() => void>();
 
   readonly code: string;
@@ -93,6 +99,8 @@ export class Room {
     if (!this.closed) return;
     this.closed = false;
     this.heartbeat = setInterval(() => this.beat(), PING_EVERY_MS);
+    const health = this.url.replace(/^ws/, "http").replace(/\/ws$/, "/health");
+    this.keepAwake = setInterval(() => fetch(health, { cache: "no-store" }).catch(() => {}), KEEP_AWAKE_MS);
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.wake);
       document.addEventListener("visibilitychange", this.onVisible);
@@ -103,6 +111,7 @@ export class Room {
   close() {
     this.closed = true;
     if (this.heartbeat) clearInterval(this.heartbeat);
+    if (this.keepAwake) clearInterval(this.keepAwake);
     this.timers.forEach(clearTimeout);
     if (typeof window !== "undefined") {
       window.removeEventListener("online", this.wake);
@@ -163,9 +172,16 @@ export class Room {
     }
   }
 
+  // Each event goes out once per connection: a burst of taps on a slow link
+  // must not resend everything still awaiting its echo. A new connection
+  // starts over, so nothing sent into a dying socket is lost.
   private flush() {
     if (!this.gotLog || this.acc === null) return;
-    for (const ev of this.events.values()) if (!this.relayHas.has(ev.id)) this.send({ k: "ev", ev });
+    for (const ev of this.events.values()) {
+      if (this.relayHas.has(ev.id) || this.sent.has(ev.id)) continue;
+      this.sent.add(ev.id);
+      this.send({ k: "ev", ev });
+    }
   }
 
   private learn(ev: Ev) {
@@ -202,6 +218,7 @@ export class Room {
     if (this.closed || this.ws) return;
     this.gotLog = false;
     this.relayHas = new Set();
+    this.sent = new Set();
     this.lastMsg = Date.now(); // the handshake gets the same deadline as a live socket
     this.status = "connecting";
     this.changed(false);

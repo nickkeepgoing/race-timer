@@ -103,7 +103,7 @@ after(async () => {
   await stopRelay();
 });
 
-test("F01 4G ช้าและขาขึ้น/ขาลงไม่เท่ากัน: เวลายังถูก และ ± ที่แสดงไม่โกหก", async () => {
+test("F01 4G ช้าและขาขึ้น/ขาลงไม่เท่ากัน: เวลายังถูก และ ± ที่แสดงไม่โกหก", async (t) => {
   const s = await phone("BLM01", "start");
   const f = await phone("BLM01", "finish");
   // start line at the far end of the field: weak, lopsided 4G
@@ -122,9 +122,10 @@ test("F01 4G ช้าและขาขึ้น/ขาลงไม่เท่
   const err = Math.abs(duration(r) - 13_570);
   assert.ok(margin(r)! >= err, `error ${err}ms must be inside the shown ±${margin(r)}ms`);
   assert.ok(err < 120, `error ${err}ms on bad 4G`);
+  t.diagnostic(`วัดได้ ${duration(r)}ms จากจริง 13570ms → คลาด ${err}ms, แอปแสดง ±${margin(r)}ms`);
 });
 
-test("F02 เดินออกนอกสัญญาณ (ต่ออยู่แต่ไม่มีอะไรผ่าน) ระหว่างมีคนเข้าเส้น", async () => {
+test("F02 เดินออกนอกสัญญาณ (ต่ออยู่แต่ไม่มีอะไรผ่าน) ระหว่างมีคนเข้าเส้น", async (t) => {
   const s = await phone("BLM02", "start");
   const f = await phone("BLM02", "finish");
   await online(s.room, f.room);
@@ -132,15 +133,19 @@ test("F02 เดินออกนอกสัญญาณ (ต่ออยู�
   await until(() => f.room.events.has(ev.id), 3000, "heat at the finish line");
 
   f.link.net.blackhole = true;
+  const lostAt = Date.now();
   const taps = ev.runners.map((r, i) => f.room.stop(r.rid, Date.now() + i * 300));
   // must notice it's offline (not show "online" forever)
   await until(() => f.room.status !== "online", 20000, "finish phone to notice the dead link");
+  const noticed = Date.now() - lostAt;
   await sleep(6000); // still out of coverage, and its reconnect attempts hang too
   f.link.net.blackhole = false;
+  const backAt = Date.now();
 
   await until(() => taps.every((t) => s.room.events.has(t.id)), 20000, "taps to arrive after coverage returns");
   assert.equal(f.room.pending.size, 0);
   assert.deepEqual(runnersOf(s.room).map((r) => r.stop?.id), taps.map((t) => t.id));
+  t.diagnostic(`รู้ตัวว่าหลุดใน ${(noticed / 1000).toFixed(1)} วิ, สัญญาณกลับแล้วผลถึงจุดเริ่มใน ${((Date.now() - backAt) / 1000).toFixed(1)} วิ`);
 });
 
 test("F03 เน็ตตัดๆ ติดๆ 8 ครั้งระหว่างรอบเดียว", async () => {
@@ -242,7 +247,7 @@ test("F08 เครื่องเส้นชัยรีเฟรช/ปิด
   await until(() => runnersOf(s.room).every((r) => r.stop), 3000, "both results");
 });
 
-test("F09 ทั้งบ่าย 40 รอบ × 8 คน: โน้ตบุ๊กประกาศผลเข้าทีหลังก็ได้ครบ และเครื่องไม่หน่วง", async () => {
+test("F09 ทั้งบ่าย 40 รอบ × 8 คน: โน้ตบุ๊กประกาศผลเข้าทีหลังก็ได้ครบ และเครื่องไม่หน่วง", async (t) => {
   const s = await phone("BLM09", "start");
   const f = await phone("BLM09", "finish");
   await online(s.room, f.room);
@@ -262,9 +267,10 @@ test("F09 ทั้งบ่าย 40 รอบ × 8 คน: โน้ตบุ�
   assert.ok(ms < 15, `fold of ${board.room.events.size} events takes ${ms.toFixed(1)}ms (phones ~5× slower)`);
   const rows = toCSV(runnersOf(board.room)).split("\r\n").length - 1;
   assert.ok(rows > 300, `${rows} results in the CSV`);
+  t.diagnostic(`${board.room.events.size} บันทึก, คำนวณผลทั้งบ่าย ${ms.toFixed(2)}ms, CSV ${rows} แถว`);
 });
 
-test("F10 นาฬิกามือถือเครื่องเส้นชัยตั้งผิดไป 7 นาที", async () => {
+test("F10 นาฬิกามือถือเครื่องเส้นชัยตั้งผิดไป 7 นาที", async (t) => {
   const s = await phone("BLM10", "start");
   await online(s.room);
   const link = mobileLink();
@@ -290,6 +296,7 @@ test("F10 นาฬิกามือถือเครื่องเส้น�
   const r = runnersOf(s.room)[0];
   assert.ok(Math.abs(duration(r) - 11_000) < 40, `11.00 s measured as ${duration(r)}ms despite a 7-minute clock error`);
   assert.equal(r.rid, ev.runners[0].rid);
+  t.diagnostic(`วิ่งจริง 11000ms วัดได้ ${duration(r)}ms ทั้งที่นาฬิกาเครื่องเส้นชัยผิด 7 นาที`);
 });
 
 test("F11 ชื่อภาษาไทยมีสระ/วรรณยุกต์ ชื่อยาว อีโมจิ ชื่อซ้ำในรอบเดียว", async () => {
