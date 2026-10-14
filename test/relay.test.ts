@@ -22,7 +22,8 @@ async function startRelay(dataDir: string) {
 }
 
 async function stopRelay() {
-  const r = relay!;
+  const r = relay;
+  if (!r) return;
   relay = null;
   await new Promise((done) => {
     r.once("exit", done);
@@ -177,4 +178,56 @@ test("a device that was never synced still gets correct times", async () => {
   } finally {
     Date.now = realNow;
   }
+});
+
+test("chaos: random taps, network drops and a relay restart — nothing vanishes, everyone converges", async () => {
+  const data = tmp();
+  await stopRelay();
+  await startRelay(data);
+  const starters = [device("CHAOS", "start"), device("CHAOS", "start")];
+  const finishers = [device("CHAOS", "finish"), device("CHAOS", "finish")];
+  const boards = [device("CHAOS", "results"), device("CHAOS", "results")];
+  const devs = [...starters, ...finishers, ...boards];
+  await ready(...devs);
+
+  // The invariant behind "runners coming and going": an event a device has
+  // seen is never gone from it again. Checked every 5ms, the whole time.
+  const seen = new Map(devs.map((d) => [d, new Set<string>()]));
+  let vanished = 0;
+  const watch = setInterval(() => {
+    for (const d of devs) {
+      const s = seen.get(d)!;
+      for (const id of s) if (!d.events.has(id)) vanished++;
+      for (const id of d.events.keys()) s.add(id);
+    }
+  }, 5);
+
+  const made = new Set<string>();
+  const rnd = (n: number) => Math.floor(Math.random() * n);
+  const pick = <T,>(a: T[]) => a[rnd(a.length)];
+  for (let step = 0; step < 400; step++) {
+    const d = pick(devs);
+    const runners = fold(d.events.values()).flatMap((h) => h.runners);
+    const running = runners.filter((r) => !r.stop);
+    const done = runners.filter((r) => r.stop);
+    const roll = Math.random();
+    if (roll < 0.12) made.add(pick(starters).start(Array.from({ length: 1 + rnd(8) }, (_, i) => `n${i}`)).id);
+    else if (roll < 0.55 && running.length) made.add(pick(finishers).stop(pick(running).rid).id);
+    else if (roll < 0.6 && done.length) made.add(pick(finishers).undo(done[rnd(done.length)].stop!.id).id);
+    else if (roll < 0.64 && running.length) made.add(pick(boards).cancel([pick(running).rid]).id);
+    else if (roll < 0.78) (d as any).lost(); // this device's network drops; it reconnects on its own
+    if (step === 200) {
+      await stopRelay(); // relay crashes mid-race, devices keep tapping offline
+      await new Promise((r) => setTimeout(r, 400));
+      await startRelay(data);
+    }
+    await new Promise((r) => setTimeout(r, rnd(12)));
+  }
+
+  await until(() => devs.every((d) => d.status === "online" && d.pending.size === 0), 20000);
+  await until(() => same(...devs), 5000);
+  clearInterval(watch);
+  assert.equal(vanished, 0, "no device ever lost an event it had seen");
+  for (const d of devs) for (const id of made) assert.ok(d.events.has(id), "every tap reached every device");
+  assert.ok(made.size > 150, `${made.size} events exercised`);
 });

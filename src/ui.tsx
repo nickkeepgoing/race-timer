@@ -83,10 +83,16 @@ export function useTicker(active: boolean, ms = 50) {
 // A tap's moment is when the finger lands (pointerdown), not when it lifts
 // (click) — that is 80-150ms earlier. The click still decides whether it was a
 // tap at all, so a scroll that started on a button never counts.
+// The event's own timeStamp says when the touch happened, so a slow phone busy
+// redrawing doesn't delay the reading; only the (short, monotonic) gap is used,
+// never performance time as a wall clock.
 export function useTapTime() {
   const down = useRef<{ key: string; at: number } | null>(null);
   return {
-    down: (key: string) => () => (down.current = { key, at: Date.now() }),
+    down: (key: string) => (e: { timeStamp: number }) => {
+      const ago = performance.now() - e.timeStamp;
+      down.current = { key, at: Date.now() - (ago >= 0 && ago < 1000 ? ago : 0) };
+    },
     take: (key: string) => {
       const d = down.current;
       down.current = null;

@@ -202,6 +202,7 @@ export class Room {
     if (this.closed || this.ws) return;
     this.gotLog = false;
     this.relayHas = new Set();
+    this.lastMsg = Date.now(); // the handshake gets the same deadline as a live socket
     this.status = "connecting";
     this.changed(false);
 
@@ -282,9 +283,12 @@ export class Room {
     this.send({ k: "ping", c: Date.now() });
   }
 
+  // Silence for too long means dead — whether the socket is open (signal gone
+  // without a close) or still opening (a handshake swallowed by a weak link or
+  // a wifi login page, which a browser can leave hanging indefinitely).
   private beat() {
     if (!this.ws) return;
-    if (this.ws.readyState === 1 && Date.now() - this.lastMsg > DEAD_AFTER_MS) this.lost();
+    if (Date.now() - this.lastMsg > DEAD_AFTER_MS) this.lost();
     else this.ping();
   }
 
@@ -324,7 +328,10 @@ export class Room {
     if (document.visibilityState !== "visible") return;
     // A phone that slept may have had its clock adjusted: measure afresh.
     this.samples = [];
-    if (this.ws?.readyState === 1) this.burst();
-    else this.wake();
+    // A socket that went quiet while the screen was off is usually dead even
+    // though it still says "open" — don't wait out DEAD_AFTER_MS to find out.
+    if (this.ws?.readyState === 1 && Date.now() - this.lastMsg < PING_EVERY_MS * 1.5) return this.burst();
+    this.drop();
+    this.wake();
   };
 }

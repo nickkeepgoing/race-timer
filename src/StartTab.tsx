@@ -12,7 +12,7 @@ export function StartTab({ room, heats, toast }: TabProps) {
   useEffect(() => save(key, roster), [key, roster]);
 
   const live = heats.filter((h) => h.runners.some((r) => !r.stop));
-  useTicker(live.length > 0, 50);
+  useTicker(live.length > 0, 100);
   const now = room.now();
   const nextHeat = heats.length + 1;
   const full = roster.length >= MAX_RUNNERS;

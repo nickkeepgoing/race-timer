@@ -8,7 +8,7 @@ export function FinishTab({ room, heats, toast }: TabProps) {
   const running = shown.reduce((n, h) => n + h.runners.filter((r) => !r.stop).length, 0);
   const [last, setLast] = useState<string | null>(null);
   const tap = useTapTime();
-  useTicker(running > 0, 50);
+  useTicker(running > 0, 100);
   const now = room.now();
 
   const stop = (r: Runner) => {
