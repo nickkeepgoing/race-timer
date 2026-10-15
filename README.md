@@ -1,6 +1,8 @@
+<img width="509" height="1153" alt="Screenshot 2026-10-15 195956" src="" />
+
 <div align="center">
 
-  <img width="480" alt="Race Timer Poster" src="docs/images/poster.png" />
+  <img width="480" alt="Race Timer Poster" src="https://github.com/user-attachments/assets/5c201ed4-6742-4d9a-bc69-cae6883c43e5" />
 
 # ⏱️ จับเวลาวิ่ง
 
@@ -43,9 +45,9 @@
 <div align="center">
 <table>
 <tr>
-<td align="center"><img src="docs/images/home.png" width="240" alt="สร้างการแข่งขัน"><br><sub><b>1 · สร้างห้อง</b></sub></td>
-<td align="center"><img src="docs/images/live.png" width="240" alt="แตะเมื่อเข้าเส้น"><br><sub><b>2 · แตะเมื่อเข้าเส้น</b></sub></td>
-<td align="center"><img src="docs/images/results.png" width="240" alt="ผลการแข่งขัน"><br><sub><b>3 · ผลสด + CSV</b></sub></td>
+<td align="center"><img src="https://github.com/user-attachments/assets/3dbacc18-107b-4b9e-b7ab-99d480279725" width="240" alt="สร้างการแข่งขัน"><br><sub><b>1 · สร้างห้อง</b></sub></td>
+<td align="center"><img src="https://github.com/user-attachments/assets/84fe46d0-f5d5-42e5-a966-82ee7fcb12e1" width="240" alt="แตะเมื่อเข้าเส้น"><br><sub><b>2 · แตะเมื่อเข้าเส้น</b></sub></td>
+<td align="center"><img src="https://github.com/user-attachments/assets/cd22d64e-f326-48de-9cbe-bb09bad1fc5a" width="240" alt="ผลการแข่งขัน"><br><sub><b>3 · ผลสด + CSV</b></sub></td>
 </tr>
 </table>
 </div>
