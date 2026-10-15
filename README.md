@@ -1,5 +1,3 @@
-<img width="509" height="1153" alt="Screenshot 2026-10-15 195956" src="" />
-
 <div align="center">
 
   <img width="480" alt="Race Timer Poster" src="https://github.com/user-attachments/assets/5c201ed4-6742-4d9a-bc69-cae6883c43e5" />
