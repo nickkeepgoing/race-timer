@@ -1,5 +1,7 @@
 <div align="center">
-![Uploading Race Timer Poster.png…]()
+
+  <img width="1920" height="2800" alt="Race Timer Poster" src="https://github.com/user-attachments/assets/b9b723f7-4a27-4836-9fff-c2033eb5826c" />
+
 
 # ⏱️ จับเวลาวิ่ง
 
