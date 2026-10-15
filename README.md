@@ -1,7 +1,6 @@
 <div align="center">
 
-  <img width="1920" height="2800" alt="Race Timer Poster" src="https://github.com/user-attachments/assets/b9b723f7-4a27-4836-9fff-c2033eb5826c" />
-
+  <img width="480" alt="Race Timer Poster" src="docs/images/poster.png" />
 
 # ⏱️ จับเวลาวิ่ง
 
@@ -36,6 +35,20 @@
 | 🎯 | **เวลาแม่นยำ** | วัดที่ "จังหวะที่นิ้วแตะจอ" และชดเชยนาฬิกาเครื่องที่เพี้ยน พร้อมแสดง ± ความคลาดเคลื่อน |
 | 🏫 | **ออกแบบเพื่อสนามจริง** | ปุ่มใหญ่ กดผิดแก้ได้ทันที อ่านได้กลางแดด |
 | 🔌 | **รันได้ทุกที่** | โน้ตบุ๊กเครื่องเดียวในสนามโดยไม่ต้องมีอินเทอร์เน็ต หรือโฮสต์ไหนก็ได้ที่รัน Node |
+
+---
+
+## 📸 หน้าตาแอป
+
+<div align="center">
+<table>
+<tr>
+<td align="center"><img src="docs/images/home.png" width="240" alt="สร้างการแข่งขัน"><br><sub><b>1 · สร้างห้อง</b></sub></td>
+<td align="center"><img src="docs/images/live.png" width="240" alt="แตะเมื่อเข้าเส้น"><br><sub><b>2 · แตะเมื่อเข้าเส้น</b></sub></td>
+<td align="center"><img src="docs/images/results.png" width="240" alt="ผลการแข่งขัน"><br><sub><b>3 · ผลสด + CSV</b></sub></td>
+</tr>
+</table>
+</div>
 
 ---
 
@@ -88,6 +101,8 @@ npm start       # เปิดเซิร์ฟเวอร์
 <details open>
 <summary><b>🟢 จุดเริ่ม</b></summary>
 
+<br>
+
 - เตรียมรายชื่อไว้ล่วงหน้า หรือ **วางรายชื่อจาก Excel** ได้ทีละหลายบรรทัด
 - ปุ่ม **"เติมให้ครบ 8 เลน"**
 - ปุ่มปล่อยตัวขนาดใหญ่
@@ -99,25 +114,39 @@ npm start       # เปิดเซิร์ฟเวอร์
 <details open>
 <summary><b>🔴 เส้นชัย</b></summary>
 
+<br>
+
+<img src="docs/images/live.png" width="220" align="right" alt="หน้าเส้นชัย">
+
 - ทั้งแถวเป็นปุ่มใหญ่ กดง่ายแม้มือเปียก
 - ตำแหน่งแถว **ไม่ขยับ** ขณะยังมีคนวิ่ง (รอบเก่าจะหายเมื่อลู่ว่างและมีรอบใหม่ออกตัวเท่านั้น)
 - กดผิดคน? กด **"แตะผิด"** ได้ทันที
 - สั่นตอบรับทุกครั้งที่กด (ถ้าเครื่องรองรับ)
 - ถ้ามี 2 คนกดคนเดียวกัน **เวลาที่กดก่อนจะชนะ**
 
+<br clear="right">
+
 </details>
 
 <details open>
 <summary><b>🏆 ผล</b></summary>
 
+<br>
+
+<img src="docs/images/results.png" width="220" align="right" alt="หน้าผลการแข่งขัน">
+
 - อันดับพร้อมเหรียญ กรองดูทีละรอบได้
 - **"หยุดผิด — ให้วิ่งต่อ"** และลบผลได้ (กู้คืนได้)
 - ดาวน์โหลด **CSV** ที่เปิดใน Excel แล้วภาษาไทยไม่เพี้ยน และปลอดภัยจากการแทรกสูตร
+
+<br clear="right">
 
 </details>
 
 <details>
 <summary><b>🔧 ฟีเจอร์ทั่วไปทุกหน้าจอ</b></summary>
+
+<br>
 
 - **แถบสถานะ** บอกว่า ออนไลน์ / กำลังเชื่อมต่อ / ออฟไลน์ พร้อมจำนวนรายการที่รอส่งและค่า ± ของการซิงก์เวลา
 - **แถบล่าง** บอกจำนวนเครื่องที่ออนไลน์ในแต่ละบทบาท
@@ -256,8 +285,10 @@ race-timer/
 │   ├── RoomView.tsx     โครงหน้าห้อง: หัวจอ สถานะ แชร์ QR แถบบทบาท
 │   └── StartTab.tsx · FinishTab.tsx · ResultsTab.tsx
 ├── public/              ไอคอนและ service worker
-├── test/                race · relay · field
-└── docs/FIELD-TEST.md   แผนและผลทดสอบภาคสนาม
+├── docs/
+│   ├── FIELD-TEST.md    แผนและผลทดสอบภาคสนาม
+│   └── images/          poster.png · home.png · live.png · results.png
+└── test/                race · relay · field
 ```
 
 ---
