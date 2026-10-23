@@ -116,7 +116,7 @@ npm start       # เปิดเซิร์ฟเวอร์
 
 <br>
 
-<img src="docs/images/live.png" width="220" align="right" alt="หน้าเส้นชัย">
+<img src="https://github.com/user-attachments/assets/0acf8656-a9db-4f42-b87e-7c87f2cdf6c7" width="220" align="right" alt="หน้าเส้นชัย">
 
 - ทั้งแถวเป็นปุ่มใหญ่ กดง่ายแม้มือเปียก
 - ตำแหน่งแถว **ไม่ขยับ** ขณะยังมีคนวิ่ง (รอบเก่าจะหายเมื่อลู่ว่างและมีรอบใหม่ออกตัวเท่านั้น)
@@ -133,7 +133,7 @@ npm start       # เปิดเซิร์ฟเวอร์
 
 <br>
 
-<img src="docs/images/results.png" width="220" align="right" alt="หน้าผลการแข่งขัน">
+<img src="https://github.com/user-attachments/assets/fb407c7c-d07b-47bc-aa8b-b552f7b38bb8" width="220" align="right" alt="หน้าผลการแข่งขัน">
 
 - อันดับพร้อมเหรียญ กรองดูทีละรอบได้
 - **"หยุดผิด — ให้วิ่งต่อ"** และลบผลได้ (กู้คืนได้)
