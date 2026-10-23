@@ -1,138 +1,167 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1180" viewBox="0 0 1600 1180" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1160" viewBox="0 0 1800 1160" role="img" aria-labelledby="title desc">
   <title id="title">Race Timer repository flow</title>
-  <desc id="desc">Flow from browser entry through role-based React screens, local-first event storage, WebSocket relay, deterministic race folding, offline recovery, and CSV export.</desc>
+  <desc id="desc">Clean architecture flow for the Race Timer repository, from browser routing and role-based screens through local-first event synchronization, relay persistence, deterministic results, and offline recovery.</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4b5563"/>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#263238"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#64748b"/>
     </marker>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#0f172a" flood-opacity=".12"/>
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#111827" flood-opacity=".12"/>
     </filter>
     <style>
-      .title { font: 800 34px Arial, sans-serif; fill: #111827; }
-      .subtitle { font: 400 17px Arial, sans-serif; fill: #4b5563; }
-      .section { font: 800 21px Arial, sans-serif; fill: #111827; }
-      .node-title { font: 700 17px Arial, sans-serif; fill: #111827; }
-      .node-text { font: 400 14px Arial, sans-serif; fill: #374151; }
-      .small { font: 400 13px Arial, sans-serif; fill: #4b5563; }
-      .label { font: 700 13px Arial, sans-serif; fill: #374151; }
-      .node { stroke-width: 2; rx: 14; filter: url(#shadow); }
-      .arrow { stroke: #6b7280; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
-      .dash { stroke-dasharray: 8 7; }
+      .title { font: 800 38px Arial, sans-serif; fill: #17202a; }
+      .subtitle { font: 400 18px Arial, sans-serif; fill: #64748b; }
+      .lane { font: 800 17px Arial, sans-serif; fill: #475569; letter-spacing: .12em; }
+      .node-title { font: 700 18px Arial, sans-serif; fill: #17202a; }
+      .node-sub { font: 400 14px Arial, sans-serif; fill: #475569; }
+      .tag { font: 700 12px Arial, sans-serif; fill: #64748b; letter-spacing: .08em; }
+      .edge { font: 700 13px Arial, sans-serif; fill: #475569; }
+      .guarantee { font: 700 16px Arial, sans-serif; fill: #ffffff; }
+      .box { stroke-width: 2.2; filter: url(#shadow); }
+      .flow { stroke: #263238; stroke-width: 2.6; fill: none; marker-end: url(#arrow); }
+      .flow-muted { stroke: #64748b; stroke-width: 2.3; fill: none; marker-end: url(#arrow-muted); }
+      .flow-dashed { stroke-dasharray: 8 7; }
     </style>
   </defs>
 
-  <rect width="1600" height="1180" fill="#f8fafc"/>
-  <rect x="28" y="28" width="1544" height="1124" rx="24" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>
+  <rect width="1800" height="1160" fill="#edf0f2"/>
+  <rect x="34" y="30" width="1732" height="1100" rx="28" fill="#fafafa" stroke="#d8dde2" stroke-width="2"/>
 
-  <text x="72" y="82" class="title">Race Timer repository flow</text>
-  <text x="72" y="113" class="subtitle">Local-first race timing with immutable events, real-time WebSocket sync, and deterministic results.</text>
+  <text x="86" y="88" class="title">Race Timer · repository flow</text>
+  <text x="86" y="121" class="subtitle">One tap becomes a shared result — even when the network disappears.</text>
 
-  <text x="72" y="165" class="section">1. Browser and role flow</text>
+  <!-- Lane 1: entry and UI -->
+  <rect x="70" y="165" width="1660" height="275" rx="24" fill="#f1f3f5" stroke="#d9dee3" stroke-width="2"/>
+  <text x="105" y="204" class="lane">01 · ENTRY &amp; UI</text>
 
-  <rect x="72" y="190" width="190" height="78" class="node" fill="#e0f2fe" stroke="#0284c7"/>
-  <text x="167" y="222" text-anchor="middle" class="node-title">Browser</text>
-  <text x="167" y="246" text-anchor="middle" class="node-text">Open app URL</text>
+  <!-- connectors are behind nodes but within the lane -->
+  <path d="M305 304 H375" class="flow"/>
+  <path d="M605 304 H675" class="flow"/>
+  <path d="M905 304 H975" class="flow"/>
+  <path d="M1205 304 H1275" class="flow"/>
+  <path d="M1505 304 H1575" class="flow"/>
 
-  <rect x="315" y="190" width="220" height="78" class="node" fill="#ede9fe" stroke="#7c3aed"/>
-  <text x="425" y="222" text-anchor="middle" class="node-title">src/main.tsx</text>
-  <text x="425" y="246" text-anchor="middle" class="node-text">createRoot(App)</text>
+  <rect x="115" y="260" width="190" height="88" rx="17" class="box" fill="#ffda3d" stroke="#b28a00"/>
+  <text x="210" y="296" text-anchor="middle" class="node-title">Browser</text>
+  <text x="210" y="322" text-anchor="middle" class="node-sub">open app URL</text>
+  <text x="210" y="338" text-anchor="middle" class="tag">USER</text>
 
-  <rect x="588" y="190" width="220" height="78" class="node" fill="#ede9fe" stroke="#7c3aed"/>
-  <text x="698" y="222" text-anchor="middle" class="node-title">src/ui.tsx</text>
-  <text x="698" y="246" text-anchor="middle" class="node-text">useRoute() / hash route</text>
+  <rect x="375" y="260" width="230" height="88" rx="17" class="box" fill="#bdb4f5" stroke="#776ac5"/>
+  <text x="490" y="296" text-anchor="middle" class="node-title">src/main.tsx</text>
+  <text x="490" y="322" text-anchor="middle" class="node-sub">createRoot(App)</text>
+  <text x="490" y="338" text-anchor="middle" class="tag">BOOTSTRAP</text>
 
-  <rect x="861" y="190" width="245" height="78" class="node" fill="#dcfce7" stroke="#16a34a"/>
-  <text x="983" y="222" text-anchor="middle" class="node-title">src/Home.tsx</text>
-  <text x="983" y="246" text-anchor="middle" class="node-text">Create or join room</text>
+  <rect x="675" y="260" width="230" height="88" rx="17" class="box" fill="#bdb4f5" stroke="#776ac5"/>
+  <text x="790" y="296" text-anchor="middle" class="node-title">src/ui.tsx</text>
+  <text x="790" y="322" text-anchor="middle" class="node-sub">useRoute() + storage</text>
+  <text x="790" y="338" text-anchor="middle" class="tag">ROUTING</text>
 
-  <rect x="1159" y="190" width="245" height="78" class="node" fill="#dcfce7" stroke="#16a34a"/>
-  <text x="1281" y="222" text-anchor="middle" class="node-title">src/RoomView.tsx</text>
-  <text x="1281" y="246" text-anchor="middle" class="node-text">Room shell + tabs</text>
+  <rect x="975" y="260" width="230" height="88" rx="17" class="box" fill="#bdb4f5" stroke="#776ac5"/>
+  <text x="1090" y="296" text-anchor="middle" class="node-title">src/Home.tsx</text>
+  <text x="1090" y="322" text-anchor="middle" class="node-sub">create or join room</text>
+  <text x="1090" y="338" text-anchor="middle" class="tag">ROOM CODE</text>
 
-  <path d="M262 229 H315" class="arrow"/>
-  <path d="M535 229 H588" class="arrow"/>
-  <path d="M808 229 H861" class="arrow"/>
-  <path d="M1106 229 H1159" class="arrow"/>
+  <rect x="1275" y="260" width="230" height="88" rx="17" class="box" fill="#bdb4f5" stroke="#776ac5"/>
+  <text x="1390" y="296" text-anchor="middle" class="node-title">src/RoomView.tsx</text>
+  <text x="1390" y="322" text-anchor="middle" class="node-sub">room shell + tabs</text>
+  <text x="1390" y="338" text-anchor="middle" class="tag">ROOM VIEW</text>
 
-  <rect x="250" y="325" width="300" height="105" class="node" fill="#fff7ed" stroke="#ea580c"/>
-  <text x="400" y="360" text-anchor="middle" class="node-title">src/StartTab.tsx</text>
-  <text x="400" y="384" text-anchor="middle" class="node-text">Enter runners</text>
-  <text x="400" y="405" text-anchor="middle" class="node-text">start / cancel / undo</text>
+  <rect x="1575" y="260" width="115" height="88" rx="17" class="box" fill="#a9d4ff" stroke="#659bd4"/>
+  <text x="1632" y="296" text-anchor="middle" class="node-title">Role</text>
+  <text x="1632" y="322" text-anchor="middle" class="node-sub">3 tabs</text>
+  <text x="1632" y="338" text-anchor="middle" class="tag">SELECT</text>
 
-  <rect x="650" y="325" width="300" height="105" class="node" fill="#fef2f2" stroke="#dc2626"/>
-  <text x="800" y="360" text-anchor="middle" class="node-title">src/FinishTab.tsx</text>
-  <text x="800" y="384" text-anchor="middle" class="node-text">Tap finishers</text>
-  <text x="800" y="405" text-anchor="middle" class="node-text">stop / undo mis-taps</text>
+  <!-- Lane 2: role actions -->
+  <rect x="70" y="475" width="1660" height="225" rx="24" fill="#f1f3f5" stroke="#d9dee3" stroke-width="2"/>
+  <text x="105" y="514" class="lane">02 · ROLE ACTIONS → EVENTS</text>
 
-  <rect x="1050" y="325" width="300" height="105" class="node" fill="#fefce8" stroke="#ca8a04"/>
-  <text x="1200" y="360" text-anchor="middle" class="node-title">src/ResultsTab.tsx</text>
-  <text x="1200" y="384" text-anchor="middle" class="node-text">Rank and correct results</text>
-  <text x="1200" y="405" text-anchor="middle" class="node-text">download CSV</text>
+  <path d="M275 602 H350" class="flow"/>
+  <path d="M755 602 H830" class="flow"/>
+  <path d="M1235 602 H1310" class="flow"/>
 
-  <path d="M1281 268 V300 H400 V325" class="arrow"/>
-  <path d="M1281 268 V325" class="arrow"/>
-  <path d="M1281 268 V300 H1200 V325" class="arrow"/>
+  <rect x="105" y="555" width="170" height="94" rx="17" class="box" fill="#ffd9df" stroke="#d78c9a"/>
+  <text x="190" y="591" text-anchor="middle" class="node-title">Start</text>
+  <text x="190" y="617" text-anchor="middle" class="node-sub">release runners</text>
+  <text x="190" y="637" text-anchor="middle" class="tag">StartTab.tsx</text>
 
-  <text x="72" y="488" class="section">2. Local-first event and relay flow</text>
+  <rect x="350" y="555" width="405" height="94" rx="17" class="box" fill="#c9f0f2" stroke="#6ebcc0"/>
+  <text x="552" y="591" text-anchor="middle" class="node-title">start event</text>
+  <text x="552" y="617" text-anchor="middle" class="node-sub">runner names + tap timestamp</text>
+  <text x="552" y="637" text-anchor="middle" class="tag">IMMUTABLE EVENT</text>
 
-  <rect x="90" y="520" width="280" height="110" class="node" fill="#ffedd5" stroke="#f97316"/>
-  <text x="230" y="555" text-anchor="middle" class="node-title">src/room.ts</text>
-  <text x="230" y="579" text-anchor="middle" class="node-text">Room client</text>
-  <text x="230" y="601" text-anchor="middle" class="node-text">clock sync + reconnect</text>
+  <rect x="830" y="555" width="405" height="94" rx="17" class="box" fill="#c9f0f2" stroke="#6ebcc0"/>
+  <text x="1032" y="591" text-anchor="middle" class="node-title">stop / cancel / void</text>
+  <text x="1032" y="617" text-anchor="middle" class="node-sub">finish taps and corrections</text>
+  <text x="1032" y="637" text-anchor="middle" class="tag">IMMUTABLE EVENTS</text>
 
-  <rect x="475" y="520" width="280" height="110" class="node" fill="#ecfeff" stroke="#0891b2"/>
-  <text x="615" y="555" text-anchor="middle" class="node-title">localStorage</text>
-  <text x="615" y="579" text-anchor="middle" class="node-text">rt:room:&lt;code&gt;</text>
-  <text x="615" y="601" text-anchor="middle" class="node-text">events + pending queue</text>
+  <rect x="1310" y="555" width="380" height="94" rx="17" class="box" fill="#b9d9ff" stroke="#6d9fd3"/>
+  <text x="1500" y="591" text-anchor="middle" class="node-title">src/room.ts</text>
+  <text x="1500" y="617" text-anchor="middle" class="node-sub">Room client receives every event</text>
+  <text x="1500" y="637" text-anchor="middle" class="tag">SYNC CLIENT</text>
 
-  <rect x="860" y="520" width="300" height="110" class="node" fill="#dbeafe" stroke="#2563eb"/>
-  <text x="1010" y="555" text-anchor="middle" class="node-title">server.js</text>
-  <text x="1010" y="579" text-anchor="middle" class="node-text">HTTP static host</text>
-  <text x="1010" y="601" text-anchor="middle" class="node-text">WebSocket relay</text>
+  <!-- Lane 3: data flow -->
+  <rect x="70" y="735" width="1660" height="225" rx="24" fill="#f1f3f5" stroke="#d9dee3" stroke-width="2"/>
+  <text x="105" y="774" class="lane">03 · LOCAL-FIRST DATA FLOW</text>
 
-  <rect x="1265" y="520" width="250" height="110" class="node" fill="#f3f4f6" stroke="#4b5563"/>
-  <text x="1390" y="555" text-anchor="middle" class="node-title">data/&lt;code&gt;.jsonl</text>
-  <text x="1390" y="579" text-anchor="middle" class="node-text">Append-only persistence</text>
-  <text x="1390" y="601" text-anchor="middle" class="node-text">per race room</text>
+  <path d="M295 858 H380" class="flow"/>
+  <path d="M650 858 H735" class="flow"/>
+  <path d="M1005 858 H1090" class="flow"/>
+  <path d="M1360 858 H1445" class="flow"/>
 
-  <path d="M370 575 H475" class="arrow"/>
-  <text x="422" y="562" text-anchor="middle" class="label">save first</text>
-  <path d="M755 575 H860" class="arrow"/>
-  <text x="808" y="562" text-anchor="middle" class="label">WebSocket /ws</text>
-  <path d="M1160 575 H1265" class="arrow"/>
-  <text x="1212" y="562" text-anchor="middle" class="label">validate + append</text>
+  <rect x="105" y="811" width="190" height="94" rx="17" class="box" fill="#c9f0f2" stroke="#6ebcc0"/>
+  <text x="200" y="847" text-anchor="middle" class="node-title">Save first</text>
+  <text x="200" y="873" text-anchor="middle" class="node-sub">localStorage</text>
+  <text x="200" y="893" text-anchor="middle" class="tag">NO TAP LOST</text>
 
-  <rect x="270" y="685" width="1060" height="90" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
-  <text x="800" y="720" text-anchor="middle" class="node-title">Immutable events</text>
-  <text x="800" y="746" text-anchor="middle" class="node-text">start · stop · cancel · void — every device merges missing events without overwriting its own taps</text>
+  <rect x="380" y="811" width="270" height="94" rx="17" class="box" fill="#b9d9ff" stroke="#6d9fd3"/>
+  <text x="515" y="847" text-anchor="middle" class="node-title">pending queue</text>
+  <text x="515" y="873" text-anchor="middle" class="node-sub">send missing events</text>
+  <text x="515" y="893" text-anchor="middle" class="tag">ROOM CLIENT</text>
 
-  <path d="M1010 630 V685" class="arrow"/>
-  <path d="M615 630 V665 H800 V685" class="arrow"/>
+  <rect x="735" y="811" width="270" height="94" rx="17" class="box" fill="#bdb4f5" stroke="#776ac5"/>
+  <text x="870" y="847" text-anchor="middle" class="node-title">server.js</text>
+  <text x="870" y="873" text-anchor="middle" class="node-sub">validate via WebSocket</text>
+  <text x="870" y="893" text-anchor="middle" class="tag">RELAY</text>
 
-  <text x="72" y="835" class="section">3. Deterministic state and resilience</text>
+  <rect x="1090" y="811" width="270" height="94" rx="17" class="box" fill="#ffda3d" stroke="#b28a00"/>
+  <text x="1225" y="847" text-anchor="middle" class="node-title">data/&lt;code&gt;.jsonl</text>
+  <text x="1225" y="873" text-anchor="middle" class="node-sub">append-only persistence</text>
+  <text x="1225" y="893" text-anchor="middle" class="tag">RELAY DISK</text>
 
-  <rect x="110" y="870" width="315" height="105" class="node" fill="#ede9fe" stroke="#7c3aed"/>
-  <text x="267" y="905" text-anchor="middle" class="node-title">src/race.ts</text>
-  <text x="267" y="929" text-anchor="middle" class="node-text">fold(events)</text>
-  <text x="267" y="951" text-anchor="middle" class="node-text">same event set = same result</text>
+  <rect x="1445" y="811" width="245" height="94" rx="17" class="box" fill="#f4c7f4" stroke="#c27fc2"/>
+  <text x="1567" y="847" text-anchor="middle" class="node-title">broadcast</text>
+  <text x="1567" y="873" text-anchor="middle" class="node-sub">all room devices</text>
+  <text x="1567" y="893" text-anchor="middle" class="tag">REAL TIME</text>
 
-  <rect x="530" y="870" width="315" height="105" class="node" fill="#dcfce7" stroke="#16a34a"/>
-  <text x="687" y="905" text-anchor="middle" class="node-title">Derived race state</text>
-  <text x="687" y="929" text-anchor="middle" class="node-text">heats, runners, times</text>
-  <text x="687" y="951" text-anchor="middle" class="node-text">live on every device</text>
+  <!-- return path -->
+  <path d="M1567 811 V785 H515 V811" class="flow-muted flow-dashed"/>
+  <text x="1040" y="778" text-anchor="middle" class="edge">echo + merge missing events</text>
 
-  <rect x="950" y="870" width="430" height="105" class="node" fill="#fef2f2" stroke="#dc2626"/>
-  <text x="1165" y="905" text-anchor="middle" class="node-title">Offline / recovery loop</text>
-  <text x="1165" y="929" text-anchor="middle" class="node-text">queue locally → reconnect with backoff</text>
-  <text x="1165" y="951" text-anchor="middle" class="node-text">exchange missing events → rebuild relay</text>
+  <!-- output and recovery -->
+  <rect x="70" y="995" width="1660" height="105" rx="24" fill="#17202a"/>
+  <text x="105" y="1031" class="lane" style="fill:#cbd5e1">04 · DERIVE &amp; RECOVER</text>
 
-  <path d="M800 775 V825 H267 V870" class="arrow"/>
-  <path d="M425 922 H530" class="arrow"/>
-  <path d="M845 922 H950" class="arrow dash"/>
-  <text x="895" y="910" text-anchor="middle" class="small">network loss or restart</text>
+  <path d="M350 1060 H475" class="flow-muted"/>
+  <path d="M825 1060 H950" class="flow-muted"/>
+  <path d="M1300 1060 H1425" class="flow-muted"/>
 
-  <rect x="110" y="1025" width="1270" height="78" rx="16" fill="#111827"/>
-  <text x="745" y="1057" text-anchor="middle" style="font:700 18px Arial,sans-serif;fill:#ffffff">Core guarantee</text>
-  <text x="745" y="1082" text-anchor="middle" style="font:400 15px Arial,sans-serif;fill:#d1d5db">A tap is saved locally before network I/O, and all clients converge when they hold the same immutable event set.</text>
+  <rect x="105" y="1040" width="245" height="42" rx="14" fill="#aaa0f3" stroke="#d1c9ff" stroke-width="2"/>
+  <text x="227" y="1067" text-anchor="middle" class="node-title">src/race.ts · fold()</text>
+
+  <rect x="475" y="1040" width="350" height="42" rx="14" fill="#a9d4ff" stroke="#d3e9ff" stroke-width="2"/>
+  <text x="650" y="1067" text-anchor="middle" class="node-title">same events → same race state</text>
+
+  <rect x="950" y="1040" width="350" height="42" rx="14" fill="#ffd9df" stroke="#ffe6ea" stroke-width="2"/>
+  <text x="1125" y="1067" text-anchor="middle" class="node-title">offline → reconnect → resync</text>
+
+  <rect x="1425" y="1040" width="265" height="42" rx="14" fill="#ffda3d" stroke="#fff0a6" stroke-width="2"/>
+  <text x="1557" y="1067" text-anchor="middle" class="node-title">live results + CSV</text>
+
+  <!-- structural links to lower lane -->
+  <path d="M1567 905 V1040" class="flow-muted"/>
+  <path d="M870 905 V1040 H227" class="flow-muted flow-dashed"/>
+  <text x="705" y="1006" class="edge">all clients fold the shared event set</text>
 </svg>

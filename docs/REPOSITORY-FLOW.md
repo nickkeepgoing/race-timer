@@ -1,107 +1,120 @@
 # Repository flow
 
-This diagram follows one race from the browser entry point through the
-role-specific screens, local persistence, WebSocket relay, event folding, and
-result export.
+The current repository runs as a React/Vite frontend connected to a single
+Node.js WebSocket relay. The previous Vercel + Upstash Redis architecture is
+mentioned in `README.md` only as a retired design; there are no current Vercel
+deployment files or Redis/Upstash dependencies, so they are not shown here.
 
-## End-to-end flow
+## Main data flow
 
 ```mermaid
 flowchart TD
-    Browser["Browser"] --> Entry["src/main.tsx<br/>createRoot(App)"]
-    Entry --> Route{"src/ui.tsx<br/>useRoute()"}
+    subgraph Frontend["Frontend"]
+        UI["src/StartTab.tsx<br/>src/FinishTab.tsx<br/>src/ResultsTab.tsx"]
+        View["src/RoomView.tsx<br/>src/ui.tsx"]
+    end
 
-    Route -->|No room code| Home["src/Home.tsx<br/>Create or join a room"]
-    Route -->|Room code| RoomView["src/RoomView.tsx<br/>Room shell + role tabs"]
+    subgraph Client["Client state"]
+        Room["src/room.ts<br/>Room client"]
+        Local["localStorage<br/>rt:room:&lt;code&gt;"]
+        Events["Immutable events<br/>start · stop · cancel · void"]
+        Fold["src/race.ts<br/>fold(events)"]
+    end
 
-    Home --> Navigate["Hash route<br/>#/<code>/<role>"]
-    Navigate --> Route
+    subgraph Backend["Backend"]
+        Server["server.js<br/>Node HTTP host + WebSocket /ws"]
+        Validate["server.js<br/>validate and sanitize event"]
+        Broadcast["server.js<br/>broadcast to room sockets"]
+    end
 
-    RoomView --> Role{"Active role"}
-    Role --> Start["src/StartTab.tsx<br/>Prepare runners and start a heat"]
-    Role --> Finish["src/FinishTab.tsx<br/>Record finish taps"]
-    Role --> Results["src/ResultsTab.tsx<br/>Rank, correct, and export"]
+    subgraph Persistence["Room persistence"]
+        Jsonl["data/&lt;code&gt;.jsonl<br/>append-only event log"]
+    end
 
-    Start --> RoomClient["src/room.ts<br/>Room client"]
-    Finish --> RoomClient
-    Results --> RoomClient
-
-    RoomClient --> Local["localStorage<br/>rt:room:<code>"]
-    RoomClient -->|WebSocket /ws| Relay["server.js<br/>HTTP host + WebSocket relay"]
-
-    Relay --> Validate["Validate and sanitize event"]
-    Validate --> Append["Append to<br/>data/<code>.jsonl"]
-    Append --> Broadcast["Broadcast event to<br/>all room sockets"]
-    Broadcast --> RoomClient
-
-    RoomClient --> Events["Immutable event set<br/>start / stop / cancel / void"]
-    Events --> Fold["src/race.ts<br/>fold(events)"]
-    Fold --> Heats["Derived heats and runners"]
-    Heats --> Finish
-    Heats --> Results
-    Results --> CSV["CSV download"]
+    View -->|render active tab| UI
+    UI -->|start / stop / cancel / void| Room
+    Room -->|save event before network| Local
+    Room --> Events
+    Room -->|WebSocket event message| Server
+    Server --> Validate
+    Validate -->|accepted event| Jsonl
+    Validate --> Broadcast
+    Broadcast -->|event echo + room updates| Room
+    Jsonl -->|load events at process startup| Server
+    Events --> Fold
+    Fold -->|heats, times, rankings| UI
 ```
 
-## Race event sequence
+## “Tap finish” sequence
 
 ```mermaid
 sequenceDiagram
-    participant S as Start device
-    participant F as Finish device
-    participant B as Results device
-    participant R as Relay
-    participant L as Local storage
+    participant Finish as src/FinishTab.tsx
+    participant Room as src/room.ts
+    participant Store as localStorage
+    participant WS as WebSocket /ws
+    participant Server as server.js
+    participant Disk as data/<code>.jsonl
+    participant Other as Other room devices
+    participant Race as src/race.ts
+    participant Results as src/ResultsTab.tsx
 
-    S->>L: Save start event first
-    S->>R: WebSocket { k: "ev", ev: start }
-    R->>R: Validate and persist event
-    R-->>S: Echo event (ack)
-    R-->>F: Broadcast event
-    R-->>B: Broadcast event
-    F->>L: Merge event into local event set
-    B->>L: Merge event into local event set
+    Finish->>Finish: useTapTime().take(rid)
+    Finish->>Room: room.stop(rid, at)
+    Room->>Room: commit({ type: "stop", ... })
+    Room->>Store: changed() → save()
+    Room->>Room: pending.add(ev.id)
+    Room->>Room: flush()
+    Room->>WS: send({ k: "ev", ev })
+    WS->>Server: JSON event frame
+    Server->>Server: clean(msg.ev)
+    Server->>Disk: store(room, ev)
+    Disk-->>Server: appendFileSync(<code>.jsonl)
+    Server-->>Other: send({ k: "ev", ev })
+    Server-->>WS: send({ k: "ev", ev }) ack
+    WS-->>Room: receive({ k: "ev", ev })
+    Room->>Room: learn(ev) → pending.delete(ev.id)
+    Room->>Race: fold(room.events.values())
+    Race-->>Results: derived heats, runners, and finish times
 
-    F->>L: Save stop event first
-    F->>R: WebSocket { k: "ev", ev: stop }
-    R->>R: Validate and persist event
-    R-->>S: Broadcast stop
-    R-->>F: Echo stop (ack)
-    R-->>B: Broadcast stop
+    alt Network is down
+        Room->>Room: flush() cannot send; pending event remains
+        Room->>Store: save() keeps event + pending ID
+        Note over Finish,Store: UI remains usable and the tap is not lost
+    else Network reconnects
+        Room->>WS: connect() after retry backoff
+        Room->>Server: hello({ room, role })
+        Server-->>Room: log(events) catch-up
+        Room->>Room: receive(log) → learn(event)
+        Room->>Room: fixUnsynced() and flush()
+        Room->>WS: resend pending event(s)
+        WS->>Server: JSON event frame
+        Server->>Server: if (r.events.has(id)) return existing event
+        Server-->>Room: existing event echo; no duplicate append
+        Room->>Race: fold(room.events.values())
+        Race-->>Results: recovered result state
+    end
 
-    S->>S: fold(events)
-    F->>F: fold(events)
-    B->>B: fold(events)
-    Note over S,B: Same event set produces the same race result
+    opt Duplicate event ID arrives
+        Server->>Server: r.events.has(id)
+        Server-->>WS: send existing { k: "ev", ev }
+        Note over Server,Disk: Ignore duplicate ID; do not append twice
+        Room->>Room: learn(ev) deduplicates by event ID
+    end
 ```
 
-## Offline and recovery path
+### Flow summary
 
-```mermaid
-flowchart LR
-    Tap["User tap"] --> Save["Write event locally"]
-    Save --> Pending{"Relay reachable?"}
-    Pending -->|Yes| Send["Send missing events"]
-    Pending -->|No| Queue["Keep event in pending set"]
-    Queue --> Reconnect["Reconnect with backoff"]
-    Reconnect --> Sync["Exchange missing events"]
-    Send --> Sync
-    Sync --> Merge["Merge without overwriting local events"]
-    Merge --> Derived["Recompute fold(events)"]
-
-    RelayLoss["Relay restart or lost disk"] --> Sync
-    Sync --> Rebuild["Devices re-upload events<br/>the relay does not have"]
-    Rebuild --> Derived
-```
-
-## Code map
-
-| Responsibility | File |
-|---|---|
-| Browser bootstrap and production service worker registration | `src/main.tsx` |
-| Hash routing, storage helpers, room lifecycle, tap timestamps | `src/ui.tsx` |
-| Room state, WebSocket sync, retries, clock synchronization | `src/room.ts` |
-| Event types, deterministic state folding, timing, CSV formatting | `src/race.ts` |
-| Role-based room shell and sharing QR | `src/RoomView.tsx` |
-| Start, finish, and results workflows | `src/StartTab.tsx`, `src/FinishTab.tsx`, `src/ResultsTab.tsx` |
-| Static hosting, WebSocket relay, validation, persistence | `server.js` |
-| End-to-end resilience coverage | `test/*.test.ts` |
+- The role tabs in `src/StartTab.tsx`, `src/FinishTab.tsx`, and
+  `src/ResultsTab.tsx` create or display race events through `src/room.ts`.
+- `src/room.ts` writes locally first, then sends missing events to
+  `server.js` over WebSocket. This preserves taps during network loss.
+- `server.js` validates each event, appends it to
+  `data/<code>.jsonl`, and broadcasts it to every connected device in the
+  room.
+- `src/race.ts` deterministically folds the shared event set into heats,
+  runners, finish times, and rankings. Results are therefore recalculated on
+  each client rather than read from a central database.
+- Deployment is a plain Node process started with `npm start` (or
+  `npm run dev` for Vite middleware). The repository contains no active
+  Vercel or Redis/Upstash deployment integration.

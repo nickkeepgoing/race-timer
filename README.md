@@ -162,30 +162,42 @@ npm start       # เปิดเซิร์ฟเวอร์
 ## 🧠 ทำงานอย่างไร
 
 ```mermaid
-flowchart LR
-  subgraph S[📱 เครื่องจุดเริ่ม]
-    S1[UI] --> S2[(event log<br/>ในเครื่อง)]
+flowchart TD
+  subgraph Frontend["Frontend"]
+    UI["src/StartTab.tsx<br/>src/FinishTab.tsx<br/>src/ResultsTab.tsx"]
+    View["src/RoomView.tsx<br/>src/ui.tsx"]
   end
-  subgraph F[📱 เครื่องเส้นชัย]
-    F1[UI] --> F2[(event log<br/>ในเครื่อง)]
+  subgraph Client["Client state · local-first"]
+    Room["src/room.ts<br/>Room client"]
+    Local["localStorage<br/>rt:room:&lt;code&gt;"]
+    Events["Immutable events<br/>start · stop · cancel · void"]
+    Fold["src/race.ts<br/>fold(events)"]
   end
-  subgraph R[💻 เครื่องผล]
-    R2[(event log<br/>ในเครื่อง)]
+  subgraph Backend["Backend"]
+    Server["server.js<br/>Node HTTP host + WebSocket /ws"]
+    Validate["server.js<br/>validate and sanitize event"]
+    Broadcast["server.js<br/>broadcast to room sockets"]
   end
-  S2 <-- WebSocket --> X[🔁 relay<br/>Node 1 process<br/>+ ไฟล์ .jsonl]
-  F2 <-- WebSocket --> X
-  R2 <-- WebSocket --> X
+  subgraph Persistence["Room persistence"]
+    Jsonl["data/&lt;code&gt;.jsonl<br/>append-only event log"]
+  end
+
+  View -->|render active tab| UI
+  UI -->|start / stop / cancel / void| Room
+  Room -->|save event before network| Local
+  Room --> Events
+  Room -->|WebSocket event message| Server
+  Server --> Validate
+  Validate -->|accepted event| Jsonl
+  Validate --> Broadcast
+  Broadcast -->|event echo + room updates| Room
+  Jsonl -->|load events at process startup| Server
+  Events --> Fold
+  Fold -->|heats, times, rankings| UI
 ```
 
-ดูแผนภาพแบบละเอียดได้ที่
-[`docs/REPOSITORY-FLOW.md`](docs/REPOSITORY-FLOW.md) ซึ่งรวมเส้นทางตั้งแต่
-การเปิดหน้าเว็บ การกระจาย event แบบเรียลไทม์ ไปจนถึงกรณีเน็ตหลุดและ relay
-เริ่มใหม่
-
-![แผนภาพการทำงานของ repository](docs/repository-flow.svg)
-
-ดาวน์โหลดไฟล์ภาพเวกเตอร์ได้ที่
-[`docs/repository-flow.svg`](docs/repository-flow.svg)
+แผนภาพลำดับเหตุการณ์ของการแตะเข้าเส้นชัยอยู่ที่
+[`docs/REPOSITORY-FLOW.md`](docs/REPOSITORY-FLOW.md)
 
 หัวใจของระบบมี 4 ข้อ
 
