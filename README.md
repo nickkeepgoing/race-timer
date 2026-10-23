@@ -18,6 +18,7 @@
 [เริ่มใช้งาน](#-เริ่มใช้งานใน-3-นาที) ·
 [วันแข่งจริง](#-วันแข่งจริงทำอย่างไร) ·
 [ทำงานอย่างไร](#-ทำงานอย่างไร) ·
+[แผนภาพ flow](docs/REPOSITORY-FLOW.md) ·
 [นำขึ้นอินเทอร์เน็ต](#-นำขึ้นอินเทอร์เน็ต) ·
 [ทดสอบภาคสนาม](docs/FIELD-TEST.md)
 
@@ -175,6 +176,16 @@ flowchart LR
   F2 <-- WebSocket --> X
   R2 <-- WebSocket --> X
 ```
+
+ดูแผนภาพแบบละเอียดได้ที่
+[`docs/REPOSITORY-FLOW.md`](docs/REPOSITORY-FLOW.md) ซึ่งรวมเส้นทางตั้งแต่
+การเปิดหน้าเว็บ การกระจาย event แบบเรียลไทม์ ไปจนถึงกรณีเน็ตหลุดและ relay
+เริ่มใหม่
+
+![แผนภาพการทำงานของ repository](docs/repository-flow.svg)
+
+ดาวน์โหลดไฟล์ภาพเวกเตอร์ได้ที่
+[`docs/repository-flow.svg`](docs/repository-flow.svg)
 
 หัวใจของระบบมี 4 ข้อ
 
