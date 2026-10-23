@@ -182,10 +182,8 @@ flowchart LR
 การเปิดหน้าเว็บ การกระจาย event แบบเรียลไทม์ ไปจนถึงกรณีเน็ตหลุดและ relay
 เริ่มใหม่
 
-![แผนภาพการทำงานของ repository](docs/repository-flow.svg)
-
-ดาวน์โหลดไฟล์ภาพเวกเตอร์ได้ที่
-[`docs/repository-flow.svg`](docs/repository-flow.svg)
+ดู Mermaid diagram แบบเต็มได้ที่
+[`docs/REPOSITORY-FLOW.md`](docs/REPOSITORY-FLOW.md)
 
 หัวใจของระบบมี 4 ข้อ
 
